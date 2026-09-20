@@ -8,8 +8,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 [hidden]{display:none!important}
 #app{max-width:680px;margin:auto;padding:24px 18px calc(124px + env(safe-area-inset-bottom));min-height:100dvh}
 .top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px}
-.brand{font-size:18px;font-weight:850;letter-spacing:-.5px}
-.brand span{color:#c38b00}
+.brand{display:flex;align-items:center;gap:7px;font-size:18px;font-weight:850;letter-spacing:-.5px}
+.brand-mark{display:block;width:34px;height:27px;flex:0 0 34px}
+.brand-name{white-space:nowrap}
+.brand-solar{color:#c38b00}
+.brand-team{color:var(--ink)}
 .top time{font-size:12px;color:var(--muted);text-align:right}
 .back{display:flex;align-items:center;gap:6px;background:transparent;min-width:64px;color:var(--blue);font-size:28px;padding:0 8px}
 .back span{font-size:14px}
