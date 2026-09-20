@@ -146,6 +146,7 @@ declare
   previous text;
 begin
   select pg_get_functiondef('public.solar_change(text,jsonb,jsonb)'::regprocedure) into definition;
+  definition := replace(definition, E'\r\n', E'\n');
   previous := definition;
 
   definition := replace(
