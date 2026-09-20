@@ -123,6 +123,7 @@ language sql volatile security invoker set search_path = '' as $$
       'active', true
     )), '[]'::jsonb) as events
     from jsonb_array_elements_text(coalesce(next_team->'members', '[]'::jsonb)) as members(member)
+    cross join closed_or_updated
     where not coalesce((next_team->>'closed')::boolean, false)
       and not exists (
         select 1
