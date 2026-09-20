@@ -81,7 +81,7 @@ small{display:block;font-size:12px;line-height:1.5;color:var(--muted)}
 .muted-button{background:#f0f3f6;color:#536277}
 .bottom{position:fixed;bottom:0;left:50%;right:auto;width:min(100%,680px);transform:translateX(-50%);z-index:5;display:flex;gap:4px;border:1px solid #d5e0e7;border-bottom:0;border-radius:18px 18px 0 0;background:#fffffff2;box-shadow:0 -8px 28px #16324b14;padding:7px 8px calc(7px + env(safe-area-inset-bottom));backdrop-filter:blur(14px)}
 .bottom button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;flex:1;min-width:0;min-height:58px;padding:7px 4px 5px;font-size:12px;line-height:1.1;color:var(--muted);background:transparent;border-radius:12px}
-.bottom button svg{width:23px;height:23px;stroke-width:1.9}
+.bottom button svg{display:block;width:24px;height:24px;flex:0 0 24px;overflow:visible}
 .bottom button[aria-current=page]{color:var(--green-dark);background:#edf8f3;font-weight:800}
 .bottom button[aria-current=page]::before{content:"";position:absolute;top:3px;left:50%;width:28px;height:3px;transform:translateX(-50%);border-radius:3px;background:var(--green)}
 .bottom button:active{background:#deefe7}
@@ -128,8 +128,9 @@ input[type=checkbox]{width:20px;height:20px;flex-shrink:0;accent-color:var(--gre
 .select-person input{width:20px;height:20px;flex-shrink:0}
 .select-person>span:last-child{flex:1;min-width:0}
 .select-person strong{display:block;font-size:14px}
-.people-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}
-.group-toggle{display:flex;align-items:center;gap:10px;min-height:44px;margin:4px 0 10px}
+.people-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:14px;row-gap:14px}
+.people-filters>label{min-width:0;margin-top:0;margin-bottom:0}
+.group-toggle{display:flex;align-items:center;gap:10px;min-height:44px;margin:14px 0 10px}
 .people-group{padding:10px 0;border-bottom:1px solid var(--line)}
 .people-group:last-child{border-bottom:0}
 .people-group h2{margin:4px 0 8px!important;font-size:15px}
@@ -182,8 +183,7 @@ input,button,select,textarea{scroll-margin-bottom:130px}
 .team-list .empty{grid-column:1/-1}
 .member-picker{grid-template-columns:repeat(2,minmax(0,1fr))}
 .stats,.weather-card{max-width:680px}
-.people-filters{grid-template-columns:repeat(3,minmax(0,1fr))}
-.people-filters label:last-child{grid-column:auto}
+.people-filters{grid-template-columns:repeat(4,minmax(0,1fr))}
 .filters .grid2{grid-template-columns:repeat(4,minmax(0,1fr))}
 form{max-width:780px;margin:auto}
 }
