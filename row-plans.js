@@ -1,0 +1,291 @@
+/* Row installation plans are shared specifications; completion stays in Record work. */
+const ROUTES = new Set(['rowPlans', 'rowPlan', 'rowPlanEdit', 'panelTypes', 'panelTypeEdit', 'rowPlanImport']);
+const MAX_INT = 2147483647;
+const copy = value => structuredClone(value);
+const present = value => value !== null && value !== undefined && String(value).trim() !== '';
+const integer = value => Number.isSafeInteger(value) && value >= 0 && value <= MAX_INT;
+const colorValue = value => /^#[0-9a-f]{6}$/i.test(value || '') ? value : '#c5ced7';
+const numberValue = value => !present(value) ? null : Number(String(value).replace(',', '.'));
+const panelIdentity = type => `${type?.description || ''}\u0000${type?.currentClass || ''}`.toLowerCase();
+
+export function validatePanelType(item, types = []) {
+  if (!item || typeof item !== 'object') return 'A panel type is required.';
+  if (!['yellow', 'type-2', 'type-3', 'type-4', 'type-5', 'type-6', 'type-7'].includes(item.id)) return 'Choose one of the seven panel type slots.';
+  if (typeof item.name !== 'string' || !item.name.trim() || item.name.length > 120) return 'Enter a panel type name (up to 120 characters).';
+  if (typeof item.configured !== 'boolean') return 'Specify whether the type is ready to use.';
+  if (item.color !== null && !/^#[0-9a-f]{6}$/i.test(item.color || '')) return 'Enter a six-digit colour, for example #f3cf35.';
+  if (typeof item.description !== 'string' || typeof item.currentClass !== 'string' || item.description.length > 160 || item.currentClass.length > 32) return 'Check Description and Current Class.';
+  if (item.configured && (!item.color || !item.description.trim() || !item.currentClass.trim())) return 'A usable type needs colour, Description and Current Class.';
+  if (item.configured && types.some(t => t.id !== item.id && t.configured && panelIdentity(t) === panelIdentity(item))) return 'This Description + Current Class already belongs to another panel type.';
+  return '';
+}
+
+export function validateRowPlan(item, fields = [], types = []) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return 'Each plan must be an object.';
+  if (!item.id || typeof item.id !== 'string' || item.id.length > 160) return 'Each plan needs an ID (up to 160 characters).';
+  if (!fields.includes(item.field)) return 'Choose an existing field.';
+  if (!integer(item.rowNumber)) return 'Enter a whole row number from 0 to 2147483647.';
+  if (typeof item.rowType !== 'string' || item.rowType.length > 40) return 'Check the row type (up to 40 characters).';
+  if (!types.some(t => t.id === item.panelTypeId)) return 'Choose a valid panel type.';
+  if (!['verified', 'partial', 'needs_review'].includes(item.status)) return 'Choose Verified, Awaiting information or Needs review.';
+  if (typeof item.panelsKnown !== 'boolean' || typeof item.dampersKnown !== 'boolean') return 'Specify whether panel and damper instructions are known.';
+  if (item.panelCount !== null && (!integer(item.panelCount) || item.panelCount > 10000)) return 'Panel count must be blank or a whole number up to 10000.';
+  if (item.damperCount !== null && (!integer(item.damperCount) || item.damperCount > 100)) return 'Damper count must be blank or a whole number up to 100.';
+  if (!Array.isArray(item.panelGroups) || item.panelGroups.length > 100) return 'Use up to 100 panel groups.';
+  let quantity = 0;
+  for (const group of item.panelGroups) {
+    if (!group || typeof group !== 'object' || Array.isArray(group)) return 'Every panel group must be an object.';
+    if (!integer(group.quantity) || group.quantity < 1 || group.quantity > 10000) return 'Every panel group needs a positive whole quantity up to 10000.';
+    if (!['N', 'S', null].includes(group.positiveSide)) return 'Panel direction must be North, South or Not confirmed.';
+    if (!types.some(t => t.id === group.typeId)) return 'Every group needs a valid panel type.';
+    if (typeof group.sourceToken !== 'string' || group.sourceToken.length > 160) return 'Check each group’s original source marking.';
+    quantity += group.quantity;
+  }
+  if (quantity > 10000) return 'The panel groups exceed 10000 panels.';
+  if (item.panelCount !== null && quantity > item.panelCount) return 'The group quantities exceed the row’s panel count.';
+  if (item.panelsKnown && (item.panelCount === null || quantity !== item.panelCount)) return 'Known panel instructions need a panel count matching the sum of groups.';
+  if (!item.panelsKnown && (item.panelCount !== null || item.panelGroups.length)) return 'Confirm that the panel count and groups are supplied, or leave the unknown panel section blank.';
+  if (!Array.isArray(item.dampers) || item.dampers.length > 100) return 'Use up to 100 damper positions.';
+  const positions = new Set();
+  for (const damper of item.dampers) {
+    if (!damper || typeof damper !== 'object' || Array.isArray(damper)) return 'Every damper position must be an object.';
+    if (!integer(damper.post) || damper.post < 1 || !['E', 'W'].includes(damper.side)) return 'Every damper needs a positive post number and East/West side.';
+    const position = `${damper.post}-${damper.side}`;
+    if (positions.has(position)) return 'The same post and side appears twice in the damper list.';
+    positions.add(position);
+  }
+  if (item.damperCount !== null && item.dampers.length > item.damperCount) return 'The damper positions exceed the declared count.';
+  if (item.dampersKnown && (item.damperCount === null || item.dampers.length !== item.damperCount)) return 'Known damper instructions need a count matching the positions.';
+  if (!item.dampersKnown && (item.damperCount !== null || item.dampers.length)) return 'Confirm that the damper instructions are supplied, or leave the unknown damper section blank.';
+  if (item.slope !== null && (!Number.isFinite(item.slope) || Math.abs(item.slope) > 90)) return 'Slope must be blank or between -90 and 90 degrees.';
+  if (item.lowerBearingSide !== null && (typeof item.lowerBearingSide !== 'string' || item.lowerBearingSide.length > 80)) return 'Check the lower bearing side (up to 80 characters).';
+  if (item.motorAfterPanel !== null && (!integer(item.motorAfterPanel) || item.motorAfterPanel < 1 || item.panelCount === null || item.motorAfterPanel > item.panelCount)) return 'Motor position needs a known panel count and a panel number within the row.';
+  if (!Array.isArray(item.pallets) || item.pallets.length > 100) return 'Use up to 100 pallet positions.';
+  for (const pallet of item.pallets) {
+    if (!pallet || typeof pallet !== 'object' || Array.isArray(pallet)) return 'Every pallet position must be an object.';
+    if (!integer(pallet.panels) || pallet.panels < 1 || pallet.panels > 10000 || !integer(pallet.adjacentRow) || !integer(pallet.afterPanel) || pallet.afterPanel < 1 || item.panelCount === null || pallet.afterPanel > item.panelCount) return 'Each pallet needs a positive panel quantity, adjacent row number and position within a known row panel count.';
+    if (pallet.adjacentRow === item.rowNumber) return 'A pallet’s adjacent row must differ from the selected row.';
+  }
+  if (item.status === 'verified' && (!item.panelsKnown || !item.dampersKnown || item.panelGroups.some(g => !g.positiveSide || !types.find(t => t.id === g.typeId)?.configured) || !types.find(t => t.id === item.panelTypeId)?.configured)) return 'Verified plans need complete panel and damper instructions, confirmed directions and configured panel types.';
+  if (item.status === 'partial' && (item.panelGroups.some(g => !g.positiveSide || !types.find(t => t.id === g.typeId)?.configured) || (item.panelGroups.length && !item.panelsKnown) || (item.dampers.length && !item.dampersKnown))) return 'Awaiting information is for complete supplied sections. Use Needs review when existing instructions are uncertain.';
+  if (item.status === 'partial' && (item.panelsKnown && item.dampersKnown)) return 'Both sections are supplied. Choose Verified or Needs review.';
+  if (typeof item.notes !== 'string' || item.notes.length > 5000 || !item.source || typeof item.source.panels !== 'string' || typeof item.source.dampers !== 'string' || item.source.panels.length > 1000 || item.source.dampers.length > 1000) return 'Check notes and source references.';
+  if (!integer(item.revision)) return 'The plan revision must be a whole number.';
+  return '';
+}
+
+export function createRowPlansFeature(api) {
+  const {esc, btn} = api;
+  let field = '', query = '', teamContext = null, parent = {screen:'settings', id:null};
+  let selectedRow = null, selectedType = null, currentScreen = 'rowPlans', tab = 'plan', mode = 'panels';
+  let draft = null, editBase = null, typeBase = null, editDirty = false, importText = '', importPreview = null, typeParent='settings';
+  const database = () => api.getDb();
+  const plans = () => database().rowPlans || [];
+  const types = () => database().panelTypes || [];
+  const fields = () => database().fields || [];
+  const planById = id => plans().find(p => p.id === id);
+  const typeById = id => types().find(t => t.id === id);
+  const status = plan => '<span class="tag '+(plan.status === 'verified' ? 'good' : plan.status === 'partial' ? 'neutral' : 'amber')+'">'+(plan.status === 'verified' ? 'Verified' : plan.status === 'partial' ? 'Awaiting information' : 'Needs review')+'</span>';
+  const knownText = (known, count, unit) => known && count !== null ? `${count} ${unit}` : count !== null ? `${count} ${unit} · incomplete` : 'Awaiting information';
+  const option = (value, label, selected) => '<option value="'+esc(value)+'" '+(value === selected ? 'selected' : '')+'>'+esc(label)+'</option>';
+  const selectOptions = (values, selected) => values.map(value => option(value, value, selected)).join('');
+  const direction = side => side === 'N' ? '↑ + North' : side === 'S' ? '↓ + South' : '? Not confirmed';
+  const renderPage = (title, content) => api.draw(api.header(title, true) + '<div class="plans-feature">'+content+'</div>');
+  const typeName = type => type ? `${type.name} · ${type.description || 'Description pending'} · Class ${type.currentClass || '?'}` : 'Panel type not recorded';
+  function typeBadge(id, compact = false) {
+    const type = typeById(id);
+    return '<span class="plan-type-badge'+(compact?' compact-type':'')+'"><span class="plan-swatch" style="background:'+colorValue(type?.color)+'" aria-hidden="true"></span><span><strong>'+esc(type?.name || 'Unknown type')+'</strong>'+(!compact?'<small>'+esc(type?.description || 'Description pending')+' · Current Class '+esc(type?.currentClass || 'pending')+'</small>':'')+'</span></span>';
+  }
+  function typeOptions(selected) {
+    return types().filter(t => t.configured || t.id === selected).map(t => option(t.id, typeName(t)+(t.configured?'':' · awaiting setup'), selected)).join('');
+  }
+  const compass = '<div class="plan-compass"><strong>N · North</strong><span aria-hidden="true">↓</span><strong>S · South</strong><small>All numbers start at the north end</small></div>';
+  function sourceDetails(plan) {
+    return '<details class="plan-source"><summary>Source & review notes</summary><dl><dt>Panel source</dt><dd>'+esc(plan.source?.panels || 'Not supplied')+'</dd><dt>Damper source</dt><dd>'+esc(plan.source?.dampers || 'Not supplied')+'</dd></dl>'+(plan.notes?'<p>'+esc(plan.notes)+'</p>':'')+'<small>Plan revision '+esc(plan.revision)+'</small></details>';
+  }
+  function listRows() {
+    const rows = plans().filter(p => (!field || p.field === field) && (!query || String(p.rowNumber).includes(query) || (p.rowType || '').toLowerCase().includes(query.toLowerCase()))).sort((a,b) => a.field.localeCompare(b.field) || a.rowNumber-b.rowNumber);
+    return rows.length ? '<div class="plan-list">'+rows.map(p => '<button type="button" class="card plan-row-card" data-action="plan-row" data-id="'+esc(p.id)+'"><span class="row"><strong>Row '+esc(p.rowNumber)+'</strong>'+status(p)+'</span><small>'+esc(p.field)+(p.rowType?' · Type '+esc(p.rowType):'')+'</small>'+typeBadge(p.panelTypeId)+'<span class="plan-row-counts"><span>Panels<br><strong>'+esc(knownText(p.panelsKnown, p.panelCount, 'panels'))+'</strong></span><span>Dampers<br><strong>'+esc(knownText(p.dampersKnown, p.damperCount, 'dampers'))+'</strong></span></span></button>').join('')+'</div>' : '<section class="empty"><h2>No row plans found</h2><p>Choose another field or create the row’s installation instructions.</p></section>';
+  }
+  function drawList() {
+    if (field && !fields().includes(field)) field = '';
+    const context = teamContext ? '<section class="card plan-context"><strong>Team '+esc(teamContext.number)+' · '+esc(teamContext.field)+'</strong><small>'+esc(teamContext.work)+' · '+(present(teamContext.from)?'Start row '+esc(teamContext.from):'No start row')+'</small><p class="hint">Installation instructions are shared by field and row. Record completed work from the team screen.</p></section>' : '<p class="muted">Shared installation instructions for every field and row.</p>';
+    renderPage('Row installation plans', context+'<form data-form="plan-filter" class="card plan-filters"><div class="grid2"><label>Field<select name="field">'+option('', 'All fields', field)+selectOptions(fields(), field)+'</select></label><label>Find row or type<input name="query" value="'+esc(query)+'" maxlength="60" placeholder="For example 901" inputmode="search"></label></div><button type="submit" class="secondary">Find rows</button></form><div class="plan-toolbar">'+btn('Add row plan', 'plan-new', 'compact primary')+btn('Panel types', 'plan-types', 'compact')+btn('Import plans', 'plan-import', 'compact')+'</div><div id="plan-results">'+listRows()+'</div>');
+  }
+  function drawPlan() {
+    const plan = planById(selectedRow);
+    if (!plan) { renderPage('Row plan', '<section class="empty"><h2>Row plan is unavailable</h2>'+btn('View row plans', 'plan-list')+'</section>'); return; }
+    const tabs = '<div class="plan-tabs" role="group" aria-label="Plan view">'+['plan','diagram'].map(v => '<button type="button" class="'+(tab===v?'active':'')+'" data-action="plan-tab" data-id="'+v+'" aria-pressed="'+(tab===v)+'">'+(v==='plan'?'Plan':'Diagram')+'</button>').join('')+'</div>';
+    renderPage('Row '+plan.rowNumber, '<section class="card plan-overview"><div class="row"><p class="eyebrow">'+esc(plan.field)+(plan.rowType?' · Row type '+esc(plan.rowType):'')+'</p>'+status(plan)+'</div>'+typeBadge(plan.panelTypeId)+'<div class="plan-summary"><span><small>Panels</small><strong>'+esc(knownText(plan.panelsKnown, plan.panelCount, 'panels'))+'</strong></span><span><small>Dampers</small><strong>'+esc(knownText(plan.dampersKnown, plan.damperCount, 'dampers'))+'</strong></span></div>'+btn('Edit installation plan', 'plan-edit', 'secondary', plan.id)+'</section>'+tabs+(tab==='diagram'?diagram(plan):planDetails(plan))+sourceDetails(plan));
+  }
+  function planDetails(plan) {
+    let ordinal = 1;
+    const groups = plan.panelGroups.map((group,index) => {const first=ordinal;ordinal+=group.quantity;return '<li><div class="row"><strong>Group '+(index+1)+' · Panels '+first+'–'+(ordinal-1)+'</strong><span class="plan-direction '+(group.positiveSide?'':'warning-text')+'">'+direction(group.positiveSide)+'</span></div><small>'+group.quantity+' panels · Ordered north to south</small>'+typeBadge(group.typeId)+(group.sourceToken?'<small>Original marking: '+esc(group.sourceToken)+'</small>':'')+'</li>'}).join('');
+    const dampers = [...plan.dampers].sort((a,b) => a.post-b.post || a.side.localeCompare(b.side)).map(d => '<li class="row"><strong>Post '+esc(d.post)+'</strong><span>'+ (d.side==='E'?'East →':'← West')+'</span></li>').join('');
+    return '<section class="card"><h2>Panel sequence · North → South</h2>'+(!plan.panelsKnown?'<p class="plan-notice">Panel instructions are incomplete. Confirm the source before installation.</p>':'')+(groups?'<ol class="plan-detail-list">'+groups+'</ol>':'<p class="muted">Panel group information has not been supplied.</p>')+'</section><section class="card"><h2>Damper positions</h2><p class="hint">Post numbers start at the north end. Panel numbers and post numbers are separate.</p>'+(!plan.dampersKnown?'<p class="plan-notice">Damper instructions have not been confirmed.</p>':'')+(dampers?'<ul class="plan-detail-list">'+dampers+'</ul>':'<p class="muted">'+(plan.dampersKnown?'No dampers required.':'No damper positions supplied.')+'</p>')+'</section><section class="card"><h2>Additional instructions</h2><dl class="plan-facts"><dt>Slope</dt><dd>'+ (plan.slope===null?'Not supplied':esc(plan.slope)+'°')+'</dd><dt>Lower bearing side</dt><dd>'+esc(plan.lowerBearingSide || 'Not supplied')+'</dd><dt>Motor</dt><dd>'+ (plan.motorAfterPanel===null?'Position not supplied':'After panel '+esc(plan.motorAfterPanel))+'</dd><dt>Pallet layout</dt><dd>'+(plan.pallets.length?plan.pallets.length+' recorded positions':'Not supplied')+'</dd></dl></section>';
+  }
+  function diagram(plan) {
+    const tabs = '<div class="plan-tabs plan-mode-tabs" role="group" aria-label="Diagram mode">'+['panels','dampers','pallets'].map(v => '<button type="button" data-action="plan-mode" data-id="'+v+'" class="'+(mode===v?'active':'')+'" aria-pressed="'+(mode===v)+'">'+v[0].toUpperCase()+v.slice(1)+'</button>').join('')+'</div>';
+    const content = mode==='panels'?panelDiagram(plan):mode==='dampers'?damperDiagram(plan):palletDiagram(plan);
+    return '<section class="card plan-diagram">'+tabs+compass+content+'<p class="hint">Schematic only. Distances are not to scale. Panel ordinals and post ordinals are independent.</p></section>';
+  }
+  function svgStart(title, height = 660) {
+    return '<svg class="plan-svg" viewBox="0 0 360 '+height+'" role="img" aria-label="'+esc(title)+'" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="plan-panel-lines" width="74" height="9" patternUnits="userSpaceOnUse"><rect width="74" height="9" fill="#183b5c"/><path d="M0 8.5h74M37 0v9" stroke="#5b7993" stroke-width=".6"/></pattern></defs>';
+  }
+  function panelDiagram(plan) {
+    const sum = plan.panelGroups.reduce((value,g) => value+g.quantity,0), total = plan.panelCount || sum;
+    if (!total || !plan.panelGroups.length) return '<div class="plan-no-diagram"><strong>Panel layout is awaiting information</strong><p>Add panel groups, quantities and directions in the constructor.</p></div>';
+    let index=0, svg=svgStart('Panel groups for row '+plan.rowNumber+', numbered north to south');
+    svg += '<text x="150" y="26" text-anchor="middle" class="svg-title">Row '+esc(plan.rowNumber)+'</text><rect x="110" y="46" width="80" height="548" rx="4" fill="#e9eef3" stroke="#8b9cae"/>';
+    plan.panelGroups.forEach((group,i) => {const y=46+index/total*548,height=group.quantity/total*548,type=typeById(group.typeId),first=index+1;index+=group.quantity;svg+='<rect x="113" y="'+y+'" width="74" height="'+height+'" fill="url(#plan-panel-lines)"/><rect x="110" y="'+y+'" width="5" height="'+height+'" fill="'+colorValue(type?.color)+'"/><path d="M96 '+y+'H194" stroke="#7b93a6" stroke-dasharray="3 3"/><text x="98" y="'+(y+Math.min(18,height/2))+'" text-anchor="end" class="svg-label">'+first+'–'+index+'</text><text x="205" y="'+(y+Math.min(18,height/2))+'" class="svg-direction">'+esc(direction(group.positiveSide))+'</text><text x="205" y="'+(y+Math.min(34,height*.75))+'" class="svg-small">Group '+(i+1)+' · '+group.quantity+'</text>'});
+    if (sum < total) svg+='<text x="204" y="'+(46+sum/total*548+22)+'" class="svg-small">'+(total-sum)+' panels: no groups</text>';
+    if (plan.motorAfterPanel !== null) {const y=46+plan.motorAfterPanel/total*548;svg+='<path d="M102 '+y+'H198" stroke="#ae3042" stroke-width="3"/><circle cx="150" cy="'+y+'" r="6" fill="#fff" stroke="#ae3042" stroke-width="3"/><text x="16" y="'+Math.min(623,y+22)+'" class="svg-motor">Motor after panel '+plan.motorAfterPanel+'</text>'}
+    svg+='<text x="150" y="623" text-anchor="middle" class="svg-small">'+total+' panel positions · North → South</text></svg>';
+    return (!plan.panelsKnown?'<p class="plan-notice">Incomplete panel instructions</p>':'')+svg+'<div class="plan-diagram-legend">'+plan.panelGroups.map((g,i)=>'<div><strong>Group '+(i+1)+'</strong>'+typeBadge(g.typeId)+'</div>').join('')+'</div>'+(plan.motorAfterPanel===null?'<p class="hint">Motor position has not been supplied.</p>':'');
+  }
+  function damperDiagram(plan) {
+    if (!plan.dampers.length) return '<div class="plan-no-diagram"><strong>'+(plan.dampersKnown?'No dampers required':'Damper layout is awaiting information')+'</strong><p>Set the post number and East/West side for each damper in the constructor.</p></div>';
+    const posts = [...new Set(plan.dampers.map(d => d.post))].sort((a,b)=>a-b), height=Math.max(370,130+posts.length*95), spacing=(height-150)/Math.max(posts.length-1,1);
+    let svg=svgStart('Damper positions for row '+plan.rowNumber+'; post numbers from north',height);
+    svg+='<text x="40" y="28" class="svg-title">West</text><text x="273" y="28" class="svg-title">East</text><path d="M180 58V'+(height-50)+'" stroke="#8c9bab" stroke-width="9"/>';
+    posts.forEach((post,i) => {const y=80+i*spacing;svg+='<circle cx="180" cy="'+y+'" r="16" fill="#fff" stroke="#657b90" stroke-width="2"/><text x="180" y="'+(y+5)+'" text-anchor="middle" class="svg-label">'+post+'</text>';plan.dampers.filter(d=>d.post===post).forEach(d=>{const east=d.side==='E',x=east?242:73;svg+='<path d="M'+(east?199:161)+' '+y+'H'+(east?257:102)+'" stroke="#00875b" stroke-width="6"/><rect x="'+x+'" y="'+(y-21)+'" width="45" height="42" rx="6" fill="#e0f6eb" stroke="#00875b" stroke-width="2"/><text x="'+(x+22)+'" y="'+(y+5)+'" text-anchor="middle" class="svg-label">'+d.side+'</text>'})});
+    return (!plan.dampersKnown?'<p class="plan-notice">Incomplete damper instructions</p>':'')+svg+'<text x="180" y="'+(height-18)+'" text-anchor="middle" class="svg-small">Post numbers from north · '+plan.dampers.length+' dampers</text></svg><p class="hint">Only recorded posts are shown. Gaps between posts are schematic.</p>';
+  }
+  function palletDiagram(plan) {
+    if (!plan.pallets.length || !plan.panelCount) return '<div class="plan-no-diagram"><strong>Pallet placement has not been supplied</strong><p>Add a pallet’s panel quantity, position after a panel, and the adjacent row. No placement is inferred from the reference photo.</p></div>';
+    const neighbors=[...new Set(plan.pallets.map(p=>p.adjacentRow))];
+    return neighbors.map(neighbor=>{let svg=svgStart('Pallets between row '+plan.rowNumber+' and recorded adjacent row '+neighbor);svg+='<text x="76" y="29" text-anchor="middle" class="svg-title">Row '+plan.rowNumber+'</text><text x="285" y="29" text-anchor="middle" class="svg-title">Row '+neighbor+'</text><rect x="44" y="52" width="62" height="540" fill="url(#plan-panel-lines)"/><rect x="254" y="52" width="62" height="540" fill="#d5dde5"/><text x="285" y="617" text-anchor="middle" class="svg-small">Adjacent row</text>';
+      plan.pallets.filter(p=>p.adjacentRow===neighbor).forEach((p,i)=>{const y=52+p.afterPanel/plan.panelCount*540;svg+='<path d="M110 '+y+'H247" stroke="#73879b" stroke-dasharray="4 4"/><rect x="144" y="'+(y-24)+'" width="72" height="38" rx="3" fill="#9a7548"/><rect x="147" y="'+(y-27)+'" width="66" height="34" fill="#214969" stroke="#86a6c0"/><rect x="147" y="'+(y-27)+'" width="9" height="9" fill="'+colorValue(typeById(plan.panelTypeId)?.color)+'"/><text x="180" y="'+(y+28)+'" text-anchor="middle" class="svg-small">'+p.panels+' panels · after '+p.afterPanel+'</text>'});
+      return '<h3>Between rows '+plan.rowNumber+' and '+neighbor+'</h3>'+svg+'</svg>';
+    }).join('')+'<p class="hint">The second row is a position reference; its panel layout is not inferred.</p>';
+  }
+  function blankPlan() {
+    return {id:api.newId(), field:field || fields()[0] || '', rowNumber:present(teamContext?.from)?Number(teamContext.from):null, rowType:'', panelTypeId:types().find(t=>t.configured)?.id || 'yellow', panelCount:null, panelsKnown:false, panelGroups:[], dampersKnown:false, damperCount:null, dampers:[], slope:null, lowerBearingSide:null, motorAfterPanel:null, pallets:[], status:'needs_review', notes:'', source:{panels:'',dampers:''}, revision:0};
+  }
+  function startEdit(id) {
+    editBase = id ? copy(planById(id)) : null;
+    if (id && !editBase) {api.toast('This row plan is no longer available.');return;}
+    selectedRow = id || null;
+    draft = editBase ? copy(editBase) : blankPlan(); editDirty=false;
+    api.navigate('rowPlanEdit');
+  }
+  function input(name, value, extra = '') {return '<input name="'+esc(name)+'" value="'+esc(value)+'" '+extra+'>';}
+  function drawEdit() {
+    if (!draft) draft=blankPlan();
+    const groupInputs=draft.panelGroups.map((g,i)=>'<fieldset class="plan-item"><legend>Group '+(i+1)+' · North → South</legend><div class="grid2"><label>Panel quantity'+input('groupQuantity_'+i,g.quantity,'type="number" min="1" max="10000" step="1" inputmode="numeric" required')+'</label><label>Positive connector<select name="groupSide_'+i+'">'+option('', 'Not confirmed',g.positiveSide || '')+option('N','↑ + North',g.positiveSide)+option('S','↓ + South',g.positiveSide)+'</select></label></div><label>Panel type<select name="groupType_'+i+'">'+typeOptions(g.typeId)+'</select></label><label>Original source marking <span class="optional">Optional</span>'+input('groupToken_'+i,g.sourceToken,'maxlength="160" placeholder="For example 650H"')+'</label>'+btn('Remove group','plan-remove-group','text-button',String(i))+'</fieldset>').join('');
+    const damperInputs=draft.dampers.map((d,i)=>'<fieldset class="plan-item"><legend>Damper '+(i+1)+'</legend><div class="grid2"><label>Post from north'+input('damperPost_'+i,d.post,'type="number" min="1" max="2147483647" step="1" inputmode="numeric" required')+'</label><label>Side<select name="damperSide_'+i+'">'+option('E','East',d.side)+option('W','West',d.side)+'</select></label></div>'+btn('Remove damper','plan-remove-damper','text-button',String(i))+'</fieldset>').join('');
+    const palletInputs=draft.pallets.map((p,i)=>'<fieldset class="plan-item"><legend>Pallet '+(i+1)+'</legend><div class="grid2"><label>Panels on pallet'+input('palletPanels_'+i,p.panels,'type="number" min="1" max="10000" step="1" required')+'</label><label>After panel number'+input('palletAfter_'+i,p.afterPanel,'type="number" min="1" max="10000" step="1" required')+'</label></div><label>Adjacent row number'+input('palletRow_'+i,p.adjacentRow,'type="number" min="0" max="2147483647" step="1" required')+'</label>'+btn('Remove pallet','plan-remove-pallet','text-button',String(i))+'</fieldset>').join('');
+    renderPage(editBase?'Edit row '+editBase.rowNumber:'Add row plan', '<p class="hint">Constructor · All positions count from North → South. Leave unsupplied values blank.</p><form data-form="plan-save"><section class="card"><h2>Row identity</h2><div class="grid2"><label>Field<select name="field" required>'+selectOptions(fields(),draft.field)+'</select></label><label>Row number'+input('rowNumber',draft.rowNumber,'type="number" min="0" max="2147483647" step="1" required')+'</label></div><label>Row type <span class="optional">Optional</span>'+input('rowType',draft.rowType,'maxlength="40" placeholder="A, B, C…"')+'</label><label>Default panel type<select name="panelTypeId" required>'+typeOptions(draft.panelTypeId)+'</select></label><p class="hint">Type identity is Description + Current Class. Colour is its visual marker. Each group can have its own type.</p></section><section class="card"><h2>Panels · North → South</h2><label>Total panels'+input('panelCount',draft.panelCount,'type="number" min="0" max="10000" step="1" placeholder="Not supplied"')+'</label><label class="check-line"><input name="panelsKnown" type="checkbox" '+(draft.panelsKnown?'checked':'')+'> Panel count and groups are fully supplied</label>'+groupInputs+btn('Add panel group','plan-add-group','secondary')+'<p class="hint">Groups follow installation order from the north end. Their quantities must add up to the total when the instructions are complete.</p></section><section class="card"><h2>Dampers</h2><label>Total dampers'+input('damperCount',draft.damperCount,'type="number" min="0" max="100" step="1" placeholder="Not supplied"')+'</label><label class="check-line"><input name="dampersKnown" type="checkbox" '+(draft.dampersKnown?'checked':'')+'> Damper instructions are fully supplied</label><p class="hint">Post numbers start at the north end. They are separate from panel numbers.</p>'+damperInputs+btn('Add damper','plan-add-damper','secondary')+'</section><section class="card"><h2>Additional instructions</h2><div class="grid2"><label>Slope (degrees)'+input('slope',draft.slope,'type="number" min="-90" max="90" step="any" placeholder="Not supplied"')+'</label><label>Lower bearing side'+input('lowerBearingSide',draft.lowerBearingSide,'maxlength="80" placeholder="Not supplied"')+'</label></div><label>Motor after panel number'+input('motorAfterPanel',draft.motorAfterPanel,'type="number" min="1" max="10000" step="1" placeholder="Position not supplied"')+'</label><h2>Pallet placement <span class="optional">Optional</span></h2>'+palletInputs+btn('Add pallet position','plan-add-pallet','secondary')+'<p class="hint">Enter only confirmed positions. The reference photo does not set default pallet quantities or motor positions.</p></section><section class="card"><h2>Review & source</h2><label>Status<select name="status">'+option('needs_review','Needs review',draft.status)+option('partial','Awaiting information',draft.status)+option('verified','Verified',draft.status)+'</select></label><label>Panel source'+input('panelSource',draft.source.panels,'maxlength="1000"')+'</label><label>Damper source'+input('damperSource',draft.source.dampers,'maxlength="1000"')+'</label><label>Notes<textarea name="notes" maxlength="5000">'+esc(draft.notes)+'</textarea></label></section><button type="submit" class="primary">Save installation plan</button>'+btn('Cancel','back')+'</form>');
+    if (editDirty) api.markDirty();
+  }
+  function readDraft(form) {
+    const value=name=>String(form.get(name) || '').trim();
+    return {...draft, field:value('field'), rowNumber:numberValue(form.get('rowNumber')), rowType:value('rowType'), panelTypeId:value('panelTypeId'), panelCount:numberValue(form.get('panelCount')), panelsKnown:form.has('panelsKnown'), panelGroups:draft.panelGroups.map((g,i)=>({quantity:numberValue(form.get('groupQuantity_'+i)),positiveSide:value('groupSide_'+i)||null,typeId:value('groupType_'+i),sourceToken:value('groupToken_'+i)})), damperCount:numberValue(form.get('damperCount')), dampersKnown:form.has('dampersKnown'), dampers:draft.dampers.map((d,i)=>({post:numberValue(form.get('damperPost_'+i)),side:value('damperSide_'+i)})), slope:numberValue(form.get('slope')), lowerBearingSide:value('lowerBearingSide') || null, motorAfterPanel:numberValue(form.get('motorAfterPanel')), pallets:draft.pallets.map((p,i)=>({panels:numberValue(form.get('palletPanels_'+i)),afterPanel:numberValue(form.get('palletAfter_'+i)),adjacentRow:numberValue(form.get('palletRow_'+i))})), status:value('status'), notes:value('notes'), source:{panels:value('panelSource'),dampers:value('damperSource')}};
+  }
+  function captureDraft() {
+    const form=typeof document !== 'undefined' && document.querySelector('form[data-form="plan-save"]');
+    if (form) draft=readDraft(new FormData(form));
+  }
+  function drawTypes() {
+    renderPage('Panel types','<p class="muted">Seven colour-coded types. Description + Current Class identifies the type used in each row.</p><div class="plan-type-list">'+types().map((t,i)=>'<button type="button" class="card plan-type-card" data-action="plan-type-edit" data-id="'+esc(t.id)+'"><span class="row"><strong>Type '+(i+1)+'</strong><span class="tag '+(t.configured?'good':'neutral')+'">'+(t.configured?'Ready':'Awaiting details')+'</span></span>'+typeBadge(t.id)+'<small>Edit colour, Description and Current Class</small></button>').join('')+'</div><p class="hint">Unconfigured types are unavailable for new selections. Existing source references are preserved for review.</p>');
+  }
+  function drawTypeEdit() {
+    const t=typeBase;
+    if (!t) {renderPage('Panel type','<section class="empty">Choose a type from the directory.</section>');return;}
+    const used=plans().filter(p=>p.panelTypeId===t.id || p.panelGroups.some(g=>g.typeId===t.id)).length;
+    renderPage('Edit '+t.name,'<form data-form="plan-type-save"><section class="card">'+typeBadge(t.id)+'<label>Name'+input('name',t.name,'maxlength="120" required')+'</label><label>Colour (hex)'+input('color',t.color,'maxlength="7" pattern="#[0-9a-fA-F]{6}" placeholder="#f3cf35"')+'</label><label>Description'+input('description',t.description,'maxlength="160" placeholder="Full marking from the source table"')+'</label><label>Current Class'+input('currentClass',t.currentClass,'maxlength="32" placeholder="For example H or M"')+'</label><label class="check-line"><input name="configured" type="checkbox" '+(t.configured?'checked':'')+'> Ready to use</label><p class="hint">Ready types require every field. Current Class is a separate field from Description.</p>'+(used?'<p class="plan-notice">This type is referenced by '+used+' row plans. Changes update the shared label in those plans.</p>':'')+'</section><button type="submit" class="primary">Save panel type</button>'+btn('Cancel','back')+'</form>');
+  }
+  function drawImport() {
+    const preview=importPreview;
+    renderPage('Import row plans','<p class="muted">Paste prepared JSON. Preview every change before applying it to the shared workspace.</p><form data-form="plan-import-preview"><section class="card"><label>Plans JSON<textarea name="json" class="plan-json" required spellcheck="false" placeholder="{&quot;plans&quot;: [{…}]}">'+esc(importText)+'</textarea></label><p class="hint">Use an array of full row plans, or an object with a plans array. Missing instructions must use null values, empty arrays and Needs review; they are never inferred.</p>'+btn('Show format','plan-import-format','text-button')+'<button type="submit" class="secondary">Preview import</button></section></form>'+(preview?'<section class="card"><h2>Review '+preview.items.length+' row plans</h2><p>'+preview.newCount+' new · '+(preview.items.length-preview.newCount)+' updates</p><p class="plan-notice">Applying replaces each listed plan with its previewed values. Other rows remain unchanged.</p><div class="plan-import-list">'+preview.items.map(p=>'<div class="plan-import-item"><strong>'+esc(p.field)+' · Row '+p.rowNumber+'</strong><small>'+esc(knownText(p.panelsKnown,p.panelCount,'panels'))+' · '+esc(knownText(p.dampersKnown,p.damperCount,'dampers'))+'</small>'+typeBadge(p.panelTypeId)+status(p)+'</div>').join('')+'</div>'+btn('Apply reviewed import','plan-import-apply','primary')+'</section>':'')+'<details id="plan-import-format"><summary>JSON format example</summary><pre class="plan-json-example">'+esc(JSON.stringify({...blankPlan(),id:'South-100',field:'South',rowNumber:100},null,2))+'</pre><p class="hint">Example only. Replace the row number and data with your source. Use N/S for positiveSide, E/W for damper side. panelTypeId and each group’s typeId reference the panel type directory.</p></details>');
+  }
+  function previewImport(text) {
+    if (text.length > 3*1024*1024) throw new Error('The import is too large. Use files smaller than 3 MB.');
+    let json;
+    try {json=JSON.parse(text);} catch {throw new Error('The JSON could not be read. Check its syntax before previewing.');}
+    const items=Array.isArray(json)?json:json?.plans;
+    if (!Array.isArray(items) || !items.length || items.length > 2000) throw new Error('Supply between 1 and 2000 full row plans.');
+    const ids=new Set(), positions=new Set(), revisions={};let newCount=0;
+    for (const item of items) {
+      const error=validateRowPlan(item,fields(),types());if(error)throw new Error('Row '+(item?.rowNumber??'?')+': '+error);
+      const position=item.field+'\u0000'+item.rowNumber;
+      if (ids.has(item.id) || positions.has(position)) throw new Error('The import repeats an ID or field + row number.');
+      ids.add(item.id);positions.add(position);
+      const existing=planById(item.id), duplicate=plans().find(p=>p.field===item.field && p.rowNumber===item.rowNumber && p.id!==item.id);
+      if (duplicate) throw new Error(item.field+' row '+item.rowNumber+' already has ID '+duplicate.id+'. Use that ID to update it.');
+      if (existing && (existing.field!==item.field || existing.rowNumber!==item.rowNumber)) throw new Error('ID '+item.id+' belongs to a different row. Keep the original field and row number.');
+      revisions[item.id]=existing?.revision??null;if(!existing)newCount++;
+    }
+    return {items:copy(items),revisions,newCount};
+  }
+  function render(screen) {
+    currentScreen=screen;
+    ({rowPlans:drawList,rowPlan:drawPlan,rowPlanEdit:drawEdit,panelTypes:drawTypes,panelTypeEdit:drawTypeEdit,rowPlanImport:drawImport}[screen] || drawList)();
+  }
+  async function handleAction(action,id) {
+    if (!action.startsWith('plan-')) return false;
+    if (action==='plan-open') {teamContext=null;parent={screen:'settings',id:null};field='';query='';api.navigate('rowPlans');}
+    else if (action==='plan-list') api.navigate('rowPlans');
+    else if (action==='plan-row') {selectedRow=id;tab='plan';mode='panels';api.navigate('rowPlan');}
+    else if (action==='plan-new') startEdit(null);
+    else if (action==='plan-edit') {selectedRow=id || selectedRow;startEdit(selectedRow);}
+    else if (action==='plan-types') {if(id==='settings'){teamContext=null;parent={screen:'settings',id:null};typeParent='settings';}else typeParent='rowPlans';selectedType=null;api.navigate('panelTypes');}
+    else if (action==='plan-type-edit') {selectedType=id;typeBase=copy(typeById(id));api.navigate('panelTypeEdit');}
+    else if (action==='plan-import') {importPreview=null;importText='';api.navigate('rowPlanImport');}
+    else if (action==='plan-tab') {if(['plan','diagram'].includes(id))tab=id;render('rowPlan');}
+    else if (action==='plan-mode') {if(['panels','dampers','pallets'].includes(id))mode=id;render('rowPlan');}
+    else if (/^plan-(add|remove)-(group|damper|pallet)$/.test(action)) {
+      if (!draft || currentScreen!=='rowPlanEdit') return true;
+      captureDraft();const match=action.match(/^plan-(add|remove)-(group|damper|pallet)$/), key={group:'panelGroups',damper:'dampers',pallet:'pallets'}[match[2]],index=Number(id);
+      if (match[1]==='add') {if(draft[key].length>=100){api.feedback('Use up to 100 items per section.');return true;}draft[key].push(match[2]==='group'?{quantity:25,positiveSide:null,typeId:draft.panelTypeId,sourceToken:''}:match[2]==='damper'?{post:null,side:'E'}:{panels:null,afterPanel:null,adjacentRow:null});}
+      else if(Number.isSafeInteger(index)&&index>=0&&index<draft[key].length) draft[key].splice(index,1);
+      editDirty=true;render('rowPlanEdit');
+    }
+    else if (action==='plan-import-format') {const details=document.querySelector('#plan-import-format');if(details){details.open=true;details.scrollIntoView({block:'center'});}}
+    else if (action==='plan-import-apply') {
+      if(!importPreview){api.feedback('Preview the import first.');return true;}
+      if(!api.confirm('Apply '+importPreview.items.length+' reviewed row plans to the shared workspace?')) return true;
+      if(await api.change('row_plan_import',{plans:importPreview.items},{revisions:importPreview.revisions})){importPreview=null;api.navigate('rowPlans',null,true);api.toast('Row installation plans imported.');}
+    }
+    else return false;
+    return true;
+  }
+  async function handleForm(kind,form) {
+    if (!kind.startsWith('plan-')) return false;
+    if (kind==='plan-filter') {field=String(form.get('field')||'');query=String(form.get('query')||'').trim();render('rowPlans');}
+    else if (kind==='plan-save') {
+      if(!draft){api.feedback('Open the row constructor again.');return true;}
+      draft=readDraft(form);editDirty=true;
+      const error=validateRowPlan(draft,fields(),types()), duplicate=plans().find(p=>p.id!==draft.id && p.field===draft.field && p.rowNumber===draft.rowNumber);
+      if(error){api.feedback(error);api.markDirty();return true;}
+      if(duplicate){api.feedback('This field and row already has a plan. Edit the existing record instead.');api.markDirty();return true;}
+      if(await api.change('row_plan_save',draft,{revision:editBase?.revision??null})){selectedRow=draft.id;editDirty=false;draft=null;api.navigate('rowPlan',null,true);api.toast('Installation plan saved.');}
+    }
+    else if (kind==='plan-type-save') {
+      if(!typeBase){api.feedback('Choose a panel type again.');return true;}
+      const item={...typeBase,name:String(form.get('name')||'').trim(),color:String(form.get('color')||'').trim()||null,description:String(form.get('description')||'').trim(),currentClass:String(form.get('currentClass')||'').trim(),configured:form.has('configured')};
+      const error=validatePanelType(item,types());if(error){api.feedback(error);api.markDirty();return true;}
+      if(await api.change('panel_type_save',item,{previous:typeBase})){typeBase=null;api.navigate('panelTypes',null,true);api.toast('Panel type saved.');}
+    }
+    else if (kind==='plan-import-preview') {
+      importText=String(form.get('json')||'');importPreview=null;
+      try {importPreview=previewImport(importText);render('rowPlanImport');api.markDirty();}catch(error){api.feedback(error.message);api.markDirty();}
+    }
+    else return false;
+    return true;
+  }
+  return {
+    hasScreen:screen=>ROUTES.has(screen),render,handleAction,handleForm,
+    reload(screen) {
+      if(screen==='rowPlanEdit') {
+        const latest=planById(editBase?.id || draft?.id || selectedRow);
+        if(latest){selectedRow=latest.id;editBase=copy(latest);draft=copy(latest);editDirty=false;}
+      } else if(screen==='panelTypeEdit') {
+        const latest=typeById(selectedType);if(latest)typeBase=copy(latest);
+      } else if(screen==='rowPlanImport') importPreview=null;
+    },
+    back(screen) {if(screen==='rowPlans')return parent;if(screen==='rowPlan')return {screen:'rowPlans',id:null};if(screen==='rowPlanEdit')return {screen:editBase?'rowPlan':'rowPlans',id:null};if(screen==='panelTypeEdit')return {screen:'panelTypes',id:null};if(screen==='panelTypes')return {screen:typeParent,id:null};if(screen==='rowPlanImport')return {screen:'rowPlans',id:null};return null;},
+    navDestination:()=>teamContext?'today':'settings',
+    openTeam(team) {teamContext=copy(team);parent={screen:'team',id:team.id};field=team.field;query='';api.navigate('rowPlans');}
+  };
+}
