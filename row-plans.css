@@ -62,5 +62,17 @@
 .plan-import-item>strong{display:block;font-size:14px}
 .plan-import-item .tag{margin-top:4px}
 .plans-feature details summary{cursor:pointer}
+.plan-pallet-pair{align-items:start;margin:16px 0}
+.plan-pallet-pair>div{padding-top:2px}
+.plan-pallet-pair strong{display:block;margin:8px 0;font-size:16px}
+.plan-pallet-pair select{font-size:13px}
+.plan-pallet-total{display:grid;gap:6px;padding:16px;background:#f1faf5;border:1px solid #cee2d8;border-radius:12px;margin:16px 0}
+.plan-pallet-total>strong{font-size:24px;color:var(--green-dark)}
+.plan-pallet-total>span{font-size:14px}
+.plan-pallet-label-key{display:flex;align-items:center;gap:10px;font-size:13px;line-height:1.5}
+.plan-pallet-key-label{flex:0 0 15px;width:15px;height:13px;border:1px solid #53677c;border-radius:2px;background:#f3cf35}
+.plan-svg .svg-pallet-row-direction{font-size:12px;font-weight:800;fill:#fff}
+.plan-pallet-preview-details{margin-top:16px}
+.plan-pallet-preview-details summary{font-size:14px;font-weight:700;padding:10px 0}
 @media(min-width:900px){.plan-list,.plan-type-list{grid-template-columns:1fr 1fr}.plan-list .empty{grid-column:1/-1}.plan-diagram-legend{grid-template-columns:1fr 1fr}.plans-feature .plan-diagram{max-width:650px;margin-left:auto;margin-right:auto}}
 @media(max-width:380px){.plan-detail-list .row{flex-direction:column;gap:6px}.plan-row-counts,.plan-summary{gap:8px}.plan-summary strong{font-size:13px}.plan-mode-tabs button{font-size:12px;padding:10px 6px}.plan-facts,.plan-source dl{grid-template-columns:1fr;gap:6px}.plan-facts dd,.plan-source dd{margin-bottom:8px}}

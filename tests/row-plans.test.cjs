@@ -55,14 +55,14 @@ test('Description + Current Class identifies a type independently of colour',asy
   assert.match(validatePanelType({...yellow,description:''},panelTypes),/needs colour/);
   assert.equal(validatePanelType(panelTypes[1],panelTypes),'');
 });
-test('schematic preserves North-to-South group order and does not invent motor or pallet locations',async()=>{
+test('schematic preserves North-to-South order and waits for a second row before automatic pallets',async()=>{
   const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature);
   await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-tab','diagram');
   assert.match(h.state.html,/1–25/);assert.match(h.state.html,/26–50/);assert.match(h.state.html,/51–75/);assert.match(h.state.html,/76–100/);
   assert.match(h.state.html,/↑ \+ North/);assert.match(h.state.html,/↓ \+ South/);
   assert.match(h.state.html,/Motor position has not been supplied/);assert.doesNotMatch(h.state.html,/Motor after panel 46/);
   await h.feature.handleAction('plan-mode','dampers');assert.match(h.state.html,/Post numbers from north/);assert.match(h.state.html,/>13<\/text>/);
-  await h.feature.handleAction('plan-mode','pallets');assert.match(h.state.html,/Pallet placement has not been supplied/);assert.doesNotMatch(h.state.html,/36 panels/);
+  await h.feature.handleAction('plan-mode','pallets');assert.match(h.state.html,/Automatic pallet layout is awaiting row information/);assert.doesNotMatch(h.state.html,/36 panels/);
   assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 test('saving a constructor draft carries the original revision and source metadata without completion writes',async()=>{
@@ -112,16 +112,16 @@ test('loading latest invalidates a stale import preview before apply',async()=>{
   assert.match(h.state.html,/Photo 1/);
 });
 
-test('pallets have their own row-plan section and direct diagram action',async()=>{
-  const {createRowPlansFeature}=await load(),p=plan({pallets:[{panels:36,afterPanel:75,adjacentRow:902},{panels:24,afterPanel:25,adjacentRow:902}]}),h=harness(createRowPlansFeature,[p]);
+test('saved manual positions stay separate from the automatic forklift layout',async()=>{
+  const {createRowPlansFeature}=await load(),p=plan({pallets:[{panels:36,afterPanel:75,adjacentRow:902},{panels:24,afterPanel:25,adjacentRow:902}]}),right=plan({id:'right',rowNumber:902}),h=harness(createRowPlansFeature,[p,right]);
   await h.feature.handleAction('plan-row',p.id);
   assert.match(h.state.html,/<section class="card plan-pallet-section"/);
-  assert.match(h.state.html,/2 pallets · 60 panels/);
-  assert.match(h.state.html,/Rows 901 ↔ 902/);
-  assert.ok(h.state.html.indexOf('After panel 25')<h.state.html.indexOf('After panel 75'));
+  assert.match(h.state.html,/6 pallets/);
+  assert.match(h.state.html,/100 \+ 100 = 200 panels/);
   await h.feature.handleAction('plan-pallets');
-  assert.match(h.state.html,/aria-label="Pallets between row 901 and recorded adjacent row 902"/);
-  assert.match(h.state.html,/24 panels · after 25/);
+  assert.match(h.state.html,/Automatic pallet placement between rows 901 and 902/);
+  assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,6);
+  assert.deepEqual(h.db.rowPlans[0].pallets,p.pallets);
   assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 test('pallet instructions persist exact manually supplied positions and appear in a separate constructor card',async()=>{
@@ -132,3 +132,51 @@ test('pallet instructions persist exact manually supplied positions and appear i
   const write=h.events.find(e=>e.kind);assert.deepEqual(write.item.pallets,p.pallets);
   assert.deepEqual(write.expected,{revision:3});assert.equal(h.events.some(e=>e.kind?.includes('team')),false);
 });
+
+test('automatic pair count uses 36 per pallet with no carryover',async()=>{
+  const {automaticPalletLayout}=await load();
+  const pair=(a,b)=>automaticPalletLayout(plan({panelCount:a}),plan({id:'right',rowNumber:902,panelCount:b}));
+  for(const [left,right,count] of [[100,100,6],[75,75,5],[100,75,5],[50,50,3],[25,25,2],[36,36,2],[0,0,0],[100,0,3]]){
+    const layout=pair(left,right);assert.equal(layout.error,'');assert.equal(layout.pallets.length,count);
+    assert.equal(layout.totalPanels,left+right);assert.equal(layout.capacity,36);
+    assert.ok(layout.pallets.every(p=>p.panels===36));
+  }
+  assert.equal(pair(100,100).pallets.length,6);assert.equal(pair(100,100).pallets.length,6);
+});
+test('automatic placement follows north to south and label left relative to plus',async()=>{
+  const {automaticPalletLayout}=await load(),left=plan(),right=plan({id:'right',rowNumber:902}),before=JSON.stringify([left,right]),result=automaticPalletLayout(left,right);
+  assert.equal(result.pallets.length,6);
+  assert.deepEqual(result.pallets.map(p=>p.positiveSide),['N','N','N','S','S','S']);
+  assert.deepEqual(result.pallets.map(p=>p.labelSide),['left','left','left','right','right','right']);
+  assert.deepEqual(result.pallets.map(p=>p.nearPanel),[9,25,42,59,75,92]);
+  assert.ok(result.pallets.every((p,i,a)=>p.position>0&&p.position<1&&(!i||p.position>a[i-1].position)));
+  assert.equal(JSON.stringify([left,right]),before);
+});
+test('unknown counts, different fields and missing neighbours do not produce an automatic layout',async()=>{
+  const {automaticPalletLayout}=await load();
+  for(const right of [null,plan({id:'right',rowNumber:902,field:'North'}),plan(),plan({id:'right',rowNumber:902,panelCount:null}),plan({id:'right',rowNumber:902,panelCount:-1})]){
+    const result=automaticPalletLayout(plan(),right);assert.ok(result.error);assert.equal(result.pallets.length,0);
+  }
+});
+test('opposite row directions identify the destination and unknown plus never guesses a label',async()=>{
+  const {automaticPalletLayout}=await load(),all=(side,typeId='yellow')=>[{quantity:100,positiveSide:side,typeId,sourceToken:''}];
+  const p=plan({panelGroups:all('N')}),r=plan({id:'right',rowNumber:902,panelGroups:all('S','type-2')});
+  const result=automaticPalletLayout(p,r);
+  assert.deepEqual(result.pallets.map(x=>x.forRows),[[901],[902],[901],[902],[901],[902]]);
+  assert.deepEqual(result.pallets.map(x=>x.labelSide),['left','right','left','right','left','right']);
+  assert.deepEqual(result.pallets.map(x=>x.typeId),['yellow','type-2','yellow','type-2','yellow','type-2']);
+  const unknown=automaticPalletLayout(plan({panelGroups:all(null)}),plan({id:'right',rowNumber:902,panelGroups:all(null)}));
+  assert.ok(unknown.pallets.every(x=>x.positiveSide===null&&x.labelSide===null));
+});
+test('row cards automatically open a known pair and recalculate on right-row selection without writes',async()=>{
+  const {createRowPlansFeature}=await load(),p=plan(),r=plan({id:'right',rowNumber:902}),short=plan({id:'short',rowNumber:903,panelCount:75,panelGroups:[{quantity:75,positiveSide:'N',typeId:'yellow',sourceToken:''}]}),h=harness(createRowPlansFeature,[p,r,short]);
+  await h.feature.handleAction('plan-row',p.id);assert.match(h.state.html,/6 pallets/);assert.match(h.state.html,/100 \+ 100 = 200 panels/);
+  await h.feature.handleAction('plan-pallets');assert.match(h.state.html,/Automatic pallet placement between rows 901 and 902/);
+  assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,6);
+  const select={dataset:{palletNeighbor:''},value:'short'};
+  h.feature.handleInput(select);assert.match(h.state.html,/5 pallets/);assert.match(h.state.html,/rows 901 and 903/);
+  h.feature.handleInput({...select,value:''});assert.match(h.state.html,/Choose the row on your right/);assert.doesNotMatch(h.state.html,/class="svg-auto-pallet"/);
+  assert.equal(h.events.filter(e=>e.kind).length,0);
+});
+
+
