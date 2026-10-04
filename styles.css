@@ -217,3 +217,6 @@ form{max-width:780px;margin:auto}
 .timeline-time strong,.timeline-details strong{font-size:14px}
 .timeline-time span,.timeline-details span,.timeline-details small{color:var(--muted);font-size:12px;line-height:1.4}
 @media(max-width:420px){.continue-card{align-items:flex-start;flex-direction:column}.continue-card button{width:100%}.timeline-row{grid-template-columns:68px 1fr;gap:10px}.filters .grid2{grid-template-columns:minmax(0,1fr)}.filters input[type=date]{min-width:0;width:100%;max-width:100%;-webkit-appearance:none}}
+
+
+.common-leader h2{margin:12px 0 6px}.common-leader{border-left:4px solid #0864c5}.team-leader-line{font-size:13px;color:#0864c5;margin:8px 0}
