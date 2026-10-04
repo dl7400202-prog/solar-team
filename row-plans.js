@@ -74,11 +74,49 @@ export function validateRowPlan(item, fields = [], types = []) {
   return '';
 }
 
+const PALLET_CAPACITY = 36;
+function panelGroupAt(plan, ordinal) {
+  let end = 0;
+  for (const group of plan?.panelGroups || []) {
+    if (!Number.isSafeInteger(group.quantity) || group.quantity < 1) continue;
+    end += group.quantity;
+    if (ordinal <= end) return group;
+  }
+  return null;
+}
+
+export function automaticPalletLayout(left, right) {
+  const base = {capacity:PALLET_CAPACITY, totalPanels:null, pallets:[], error:''};
+  if (!left || !right) return {...base,error:'Choose the row on your right to calculate the pallet layout.'};
+  if (left.field !== right.field || left.rowNumber === right.rowNumber) return {...base,error:'Choose two different rows in the same field.'};
+  if ([left,right].some(row => !integer(row.panelCount) || row.panelCount > 10000)) return {...base,error:'Both rows need a known panel count before pallets can be placed automatically.'};
+  const totalPanels = left.panelCount+right.panelCount;
+  if (!totalPanels) return {...base,totalPanels:0};
+  const count = Math.ceil(totalPanels/PALLET_CAPACITY), shorter = Math.min(left.panelCount,right.panelCount), longest = Math.max(left.panelCount,right.panelCount);
+  const pallets = Array.from({length:count},(_,index) => {
+    // Midpoints of equal work intervals, with two rows contributing until the shorter one ends.
+    const demand = (index+.5)*totalPanels/count;
+    const coordinate = demand <= shorter*2 ? demand/2 : demand-shorter;
+    const nearPanel = Math.ceil(coordinate);
+    const candidates = [left,right].filter(row => coordinate <= row.panelCount).map(row => ({row,group:panelGroupAt(row,nearPanel)}));
+    const shared = candidates.length===2 && candidates[0].group?.positiveSide===candidates[1].group?.positiveSide && (candidates[0].group?.typeId || left.panelTypeId)===(candidates[1].group?.typeId || right.panelTypeId);
+    const selected = shared ? candidates[0] : candidates[index%candidates.length];
+    const positiveSide = ['N','S'].includes(selected.group?.positiveSide) ? selected.group.positiveSide : null;
+    return {number:index+1,panels:PALLET_CAPACITY,position:coordinate/longest,nearPanel,positiveSide,
+      labelSide:positiveSide==='N'?'left':positiveSide==='S'?'right':null,
+      typeId:selected.group?.typeId || selected.row.panelTypeId,
+      forRows:shared?candidates.map(candidate=>candidate.row.rowNumber):[selected.row.rowNumber]};
+  });
+  return {...base,totalPanels,pallets};
+}
+
+
 export function createRowPlansFeature(api) {
   const {esc, btn} = api;
   let field = '', query = '', teamContext = null, parent = {screen:'settings', id:null};
   let selectedRow = null, selectedType = null, currentScreen = 'rowPlans', tab = 'plan', mode = 'panels';
   let draft = null, editBase = null, typeBase = null, editDirty = false, importText = '', importPreview = null, typeParent='settings';
+  let palletNeighborId = null;
   const database = () => api.getDb();
   const plans = () => database().rowPlans || [];
   const types = () => database().panelTypes || [];
@@ -124,12 +162,28 @@ export function createRowPlansFeature(api) {
     const dampers = [...plan.dampers].sort((a,b) => a.post-b.post || a.side.localeCompare(b.side)).map(d => '<li class="row"><strong>Post '+esc(d.post)+'</strong><span>'+ (d.side==='E'?'East →':'← West')+'</span></li>').join('');
     return '<section class="card"><h2>Panel sequence · North → South</h2>'+(!plan.panelsKnown?'<p class="plan-notice">Panel instructions are incomplete. Confirm the source before installation.</p>':'')+(groups?'<ol class="plan-detail-list">'+groups+'</ol>':'<p class="muted">Panel group information has not been supplied.</p>')+'</section><section class="card"><h2>Damper positions</h2><p class="hint">Post numbers start at the north end. Panel numbers and post numbers are separate.</p>'+(!plan.dampersKnown?'<p class="plan-notice">Damper instructions have not been confirmed.</p>':'')+(dampers?'<ul class="plan-detail-list">'+dampers+'</ul>':'<p class="muted">'+(plan.dampersKnown?'No dampers required.':'No damper positions supplied.')+'</p>')+'</section><section class="card"><h2>Additional instructions</h2><dl class="plan-facts"><dt>Slope</dt><dd>'+ (plan.slope===null?'Not supplied':esc(plan.slope)+'°')+'</dd><dt>Lower bearing side</dt><dd>'+esc(plan.lowerBearingSide || 'Not supplied')+'</dd><dt>Motor</dt><dd>'+ (plan.motorAfterPanel===null?'Position not supplied':'After panel '+esc(plan.motorAfterPanel))+'</dd></dl></section>'+palletDetails(plan);
   }
-  function palletDetails(plan) {
-    const ordered = [...plan.pallets].sort((a,b) => a.adjacentRow-b.adjacentRow || a.afterPanel-b.afterPanel);
-    const total = ordered.reduce((sum,pallet) => sum+pallet.panels,0);
-    const positions = ordered.map(pallet => '<li><div class="row"><strong>Rows '+esc(plan.rowNumber)+' ↔ '+esc(pallet.adjacentRow)+'</strong><span>'+esc(pallet.panels)+' panels</span></div><small>After panel '+esc(pallet.afterPanel)+' · From north</small></li>').join('');
-    return '<section class="card plan-pallet-section"><h2>Pallet placement</h2>'+(ordered.length ? '<p class="muted">'+ordered.length+' '+(ordered.length===1?'pallet':'pallets')+' · '+total+' panels</p><ol class="plan-detail-list">'+positions+'</ol>' : '<p class="muted">Pallet placement has not been supplied.</p>')+'<p class="hint">Positions count from the north end of row '+esc(plan.rowNumber)+' toward the south.</p>'+btn('View pallet layout', 'plan-pallets', 'secondary')+'</section>';
+  function palletNeighbor(plan) {
+    const candidates = plans().filter(row => row.field===plan.field && row.rowNumber!==plan.rowNumber && row.id!==plan.id);
+    return candidates.find(row => row.id===palletNeighborId) || (!palletNeighborId && candidates.find(row => row.rowNumber===plan.rowNumber+1)) || null;
   }
+  function palletPairControls(plan) {
+    const neighbor = palletNeighbor(plan);
+    const candidates = plans().filter(row => row.field===plan.field && row.rowNumber!==plan.rowNumber && row.id!==plan.id).sort((a,b)=>a.rowNumber-b.rowNumber);
+    return '<div class="grid2 plan-pallet-pair"><div><small>Row on your left</small><strong>Row '+esc(plan.rowNumber ?? 'not set')+'</strong><small>'+esc(plan.panelCount===null?'Panel count not supplied':plan.panelCount+' panels')+'</small></div><label>Row on your right<select name="palletNeighborId" data-pallet-neighbor>'+option('','Choose row',neighbor?.id || '')+candidates.map(row=>option(row.id,'Row '+row.rowNumber+' · '+(row.panelCount===null?'count pending':row.panelCount+' panels'),neighbor?.id || '')).join('')+'</select></label></div>';
+  }
+  function automaticPalletSummary(plan) {
+    const neighbor = palletNeighbor(plan), layout = automaticPalletLayout(plan,neighbor);
+    if (layout.error) return '<p class="plan-notice">'+esc(layout.error)+'</p>';
+    const count = layout.pallets.length;
+    return '<div class="plan-pallet-total"><strong>'+count+' '+(count===1?'pallet':'pallets')+'</strong><span>'+esc(plan.panelCount)+' + '+esc(neighbor.panelCount)+' = '+layout.totalPanels+' panels</span><small>36 panels per pallet · Rounded up for this pair</small></div><p class="hint">Left/right are the two rows beside the aisle. Carryover is not tracked.</p>';
+  }
+  function palletDetails(plan) {
+    return '<section class="card plan-pallet-section"><h2>Automatic pallet placement</h2>'+palletPairControls(plan)+automaticPalletSummary(plan)+btn('View pallet layout','plan-pallets','secondary')+'</section>';
+  }
+  function palletConstructorPreview(plan) {
+    return palletPairControls(plan)+automaticPalletSummary(plan)+'<details class="plan-pallet-preview-details"><summary>Preview placement</summary>'+automaticPalletDiagram(plan)+'</details>';
+  }
+
   function diagram(plan) {
     const tabs = '<div class="plan-tabs plan-mode-tabs" role="group" aria-label="Diagram mode">'+['panels','dampers','pallets'].map(v => '<button type="button" data-action="plan-mode" data-id="'+v+'" class="'+(mode===v?'active':'')+'" aria-pressed="'+(mode===v)+'">'+v[0].toUpperCase()+v.slice(1)+'</button>').join('')+'</div>';
     const content = mode==='panels'?panelDiagram(plan):mode==='dampers'?damperDiagram(plan):palletDiagram(plan);
@@ -157,18 +211,53 @@ export function createRowPlansFeature(api) {
     posts.forEach((post,i) => {const y=80+i*spacing;svg+='<circle cx="180" cy="'+y+'" r="16" fill="#fff" stroke="#657b90" stroke-width="2"/><text x="180" y="'+(y+5)+'" text-anchor="middle" class="svg-label">'+post+'</text>';plan.dampers.filter(d=>d.post===post).forEach(d=>{const east=d.side==='E',x=east?242:73;svg+='<path d="M'+(east?199:161)+' '+y+'H'+(east?257:102)+'" stroke="#00875b" stroke-width="6"/><rect x="'+x+'" y="'+(y-21)+'" width="45" height="42" rx="6" fill="#e0f6eb" stroke="#00875b" stroke-width="2"/><text x="'+(x+22)+'" y="'+(y+5)+'" text-anchor="middle" class="svg-label">'+d.side+'</text>'})});
     return (!plan.dampersKnown?'<p class="plan-notice">Incomplete damper instructions</p>':'')+svg+'<text x="180" y="'+(height-18)+'" text-anchor="middle" class="svg-small">Post numbers from north · '+plan.dampers.length+' dampers</text></svg><p class="hint">Only recorded posts are shown. Gaps between posts are schematic.</p>';
   }
-  function palletDiagram(plan) {
-    if (!plan.pallets.length || !plan.panelCount) return '<div class="plan-no-diagram"><strong>Pallet placement has not been supplied</strong><p>Add a pallet’s panel quantity, position after a panel, and the adjacent row. No placement is inferred from the reference photo.</p></div>';
-    const neighbors=[...new Set(plan.pallets.map(p=>p.adjacentRow))].sort((a,b)=>a-b);
-    return neighbors.map(neighbor=>{let svg=svgStart('Pallets between row '+plan.rowNumber+' and recorded adjacent row '+neighbor);svg+='<text x="76" y="29" text-anchor="middle" class="svg-title">Row '+plan.rowNumber+'</text><text x="285" y="29" text-anchor="middle" class="svg-title">Row '+neighbor+'</text><rect x="44" y="52" width="62" height="540" fill="url(#plan-panel-lines)"/><rect x="254" y="52" width="62" height="540" fill="#d5dde5"/><text x="285" y="617" text-anchor="middle" class="svg-small">Adjacent row</text>';
-      plan.pallets.filter(p=>p.adjacentRow===neighbor).sort((a,b)=>a.afterPanel-b.afterPanel).forEach((p,i)=>{const y=52+p.afterPanel/plan.panelCount*540;svg+='<path d="M110 '+y+'H247" stroke="#73879b" stroke-dasharray="4 4"/><rect x="144" y="'+(y-24)+'" width="72" height="38" rx="3" fill="#9a7548"/><rect x="147" y="'+(y-27)+'" width="66" height="34" fill="#214969" stroke="#86a6c0"/><rect x="147" y="'+(y-27)+'" width="9" height="9" fill="'+colorValue(typeById(plan.panelTypeId)?.color)+'"/><text x="180" y="'+(y+28)+'" text-anchor="middle" class="svg-small">'+p.panels+' panels · after '+p.afterPanel+'</text>'});
-      return '<h3>Between rows '+plan.rowNumber+' and '+neighbor+'</h3>'+svg+'</svg>';
-    }).join('')+'<p class="hint">The second row is a position reference; its panel layout is not inferred.</p>';
+  function automaticPalletDiagram(plan) {
+    const neighbor = palletNeighbor(plan), layout = automaticPalletLayout(plan,neighbor);
+    if (layout.error) return '<div class="plan-no-diagram"><strong>Automatic pallet layout is awaiting row information</strong><p>'+esc(layout.error)+'</p></div>';
+    if (!layout.pallets.length) return '<div class="plan-no-diagram"><strong>No pallets needed</strong><p>Both rows have zero panels.</p></div>';
+    const total = Math.max(plan.panelCount,neighbor.panelCount), height = Math.max(680,layout.pallets.length*110+140), start = 65, length = height-145;
+    let svg = svgStart('Automatic pallet placement between rows '+plan.rowNumber+' and '+neighbor.rowNumber,height);
+    const rowDrawing = (row,x) => {
+      const rowLength = row.panelCount/total*length;
+      let drawing = '<text x="'+(x+30)+'" y="25" text-anchor="middle" class="svg-title">Row '+esc(row.rowNumber)+'</text><text x="'+(x+30)+'" y="46" text-anchor="middle" class="svg-small">'+row.panelCount+' panels</text><rect x="'+x+'" y="'+start+'" width="60" height="'+rowLength+'" fill="url(#plan-panel-lines)"/>';
+      let ordinal = 0;
+      for (const group of row.panelGroups) {
+        const span = Math.min(group.quantity,Math.max(0,row.panelCount-ordinal));
+        if (!span) break;
+        const y = start+ordinal/total*length, groupHeight = span/total*length;
+        drawing += '<rect x="'+x+'" y="'+y+'" width="5" height="'+groupHeight+'" fill="'+colorValue(typeById(group.typeId)?.color)+'"/><text x="'+(x+30)+'" y="'+(y+groupHeight/2+4)+'" text-anchor="middle" class="svg-pallet-row-direction">'+(group.positiveSide==='N'?'↑ + N':group.positiveSide==='S'?'↓ + S':'? +')+'</text>';
+        ordinal += span;
+      }
+      if (row.motorAfterPanel !== null && row.motorAfterPanel!==undefined) {
+        const y = start+row.motorAfterPanel/total*length;
+        drawing += '<path d="M'+(x-3)+' '+y+'H'+(x+63)+'" stroke="#ae3042" stroke-width="3"/>';
+      }
+      return drawing+'<text x="'+(x+30)+'" y="'+(start+rowLength+23)+'" text-anchor="middle" class="svg-small">Panel '+row.panelCount+'</text>';
+    };
+    svg += rowDrawing(plan,44)+rowDrawing(neighbor,256);
+    for (const pallet of layout.pallets) {
+      const y = start+pallet.position*length, north = pallet.positiveSide==='N', south = pallet.positiveSide==='S', colour = colorValue(typeById(pallet.typeId)?.color);
+      const labelX = north ? 145 : 204, labelY = north ? y-23 : y+4;
+      svg += '<g class="svg-auto-pallet" data-label-side="'+esc(pallet.labelSide || 'unknown')+'" data-positive-side="'+esc(pallet.positiveSide || 'unknown')+'"><title>Pallet '+pallet.number+' · '+esc(pallet.forRows.join(' / '))+' · '+esc(direction(pallet.positiveSide))+' · '+(pallet.labelSide?'Label '+pallet.labelSide+' on screen':'Label direction not confirmed')+'</title><path d="M108 '+y+'H252" stroke="#9babb9" stroke-dasharray="3 4"/><rect x="141" y="'+(y-20)+'" width="78" height="43" rx="3" fill="#9a7548"/><rect x="145" y="'+(y-23)+'" width="70" height="37" rx="2" fill="#214969" stroke="#92abc0"/>';
+      if (pallet.labelSide) svg += '<rect class="svg-pallet-label" x="'+labelX+'" y="'+labelY+'" width="11" height="10" fill="'+colour+'" stroke="#fff" stroke-width=".8"/>';
+      
+      svg += '<text x="180" y="'+(y+2)+'" text-anchor="middle" class="svg-pallet-row-direction">'+pallet.number+'</text><text x="180" y="'+(y+38)+'" text-anchor="middle" class="svg-label">'+(north?'↑ + N':south?'↓ + S':'? Plus unknown')+'</text><text x="180" y="'+(y+53)+'" text-anchor="middle" class="svg-small">Near panel '+pallet.nearPanel+' · 36 panels</text>';
+      if (pallet.forRows.length===1) svg += '<text x="180" y="'+(y+68)+'" text-anchor="middle" class="svg-small">For row '+esc(pallet.forRows[0])+'</text>';
+      svg += '</g>';
+    }
+    svg += '<text x="74" y="'+(height-20)+'" text-anchor="middle" class="svg-title">Left</text><text x="286" y="'+(height-20)+'" text-anchor="middle" class="svg-title">Right</text></svg>';
+    const uncertain = layout.pallets.some(pallet=>!pallet.labelSide) ? '<p class="plan-notice">Some positive directions are not confirmed. Their label side is shown as unknown.</p>' : '';
+    return svg+'<p class="plan-pallet-label-key"><span class="plan-pallet-key-label" aria-hidden="true"></span>Label: left when facing the positive connector.</p><p class="hint">+ North → label on the left. + South → label on the right. Pallet colour follows the panel type.</p>'+uncertain;
   }
+  function palletDiagram(plan) {
+    return palletPairControls(plan)+automaticPalletSummary(plan)+automaticPalletDiagram(plan);
+  }
+
   function blankPlan() {
     return {id:api.newId(), field:field || fields()[0] || '', rowNumber:present(teamContext?.from)?Number(teamContext.from):null, rowType:'', panelTypeId:types().find(t=>t.configured)?.id || 'yellow', panelCount:null, panelsKnown:false, panelGroups:[], dampersKnown:false, damperCount:null, dampers:[], slope:null, lowerBearingSide:null, motorAfterPanel:null, pallets:[], status:'needs_review', notes:'', source:{panels:'',dampers:''}, revision:0};
   }
   function startEdit(id) {
+    if (!id) palletNeighborId=null;
     editBase = id ? copy(planById(id)) : null;
     if (id && !editBase) {api.toast('This row plan is no longer available.');return;}
     selectedRow = id || null;
@@ -181,7 +270,7 @@ export function createRowPlansFeature(api) {
     const groupInputs=draft.panelGroups.map((g,i)=>'<fieldset class="plan-item"><legend>Group '+(i+1)+' · North → South</legend><div class="grid2"><label>Panel quantity'+input('groupQuantity_'+i,g.quantity,'type="number" min="1" max="10000" step="1" inputmode="numeric" required')+'</label><label>Positive connector<select name="groupSide_'+i+'">'+option('', 'Not confirmed',g.positiveSide || '')+option('N','↑ + North',g.positiveSide)+option('S','↓ + South',g.positiveSide)+'</select></label></div><label>Panel type<select name="groupType_'+i+'">'+typeOptions(g.typeId)+'</select></label><label>Original source marking <span class="optional">Optional</span>'+input('groupToken_'+i,g.sourceToken,'maxlength="160" placeholder="For example 650H"')+'</label>'+btn('Remove group','plan-remove-group','text-button',String(i))+'</fieldset>').join('');
     const damperInputs=draft.dampers.map((d,i)=>'<fieldset class="plan-item"><legend>Damper '+(i+1)+'</legend><div class="grid2"><label>Post from north'+input('damperPost_'+i,d.post,'type="number" min="1" max="2147483647" step="1" inputmode="numeric" required')+'</label><label>Side<select name="damperSide_'+i+'">'+option('E','East',d.side)+option('W','West',d.side)+'</select></label></div>'+btn('Remove damper','plan-remove-damper','text-button',String(i))+'</fieldset>').join('');
     const palletInputs=draft.pallets.map((p,i)=>'<fieldset class="plan-item"><legend>Pallet '+(i+1)+'</legend><div class="grid2"><label>Panels on pallet'+input('palletPanels_'+i,p.panels,'type="number" min="1" max="10000" step="1" required')+'</label><label>After panel number'+input('palletAfter_'+i,p.afterPanel,'type="number" min="1" max="10000" step="1" required')+'</label></div><label>Adjacent row number'+input('palletRow_'+i,p.adjacentRow,'type="number" min="0" max="2147483647" step="1" required')+'</label>'+btn('Remove pallet','plan-remove-pallet','text-button',String(i))+'</fieldset>').join('');
-    renderPage(editBase?'Edit row '+editBase.rowNumber:'Add row plan', '<p class="hint">Constructor · All positions count from North → South. Leave unsupplied values blank.</p><form data-form="plan-save"><section class="card"><h2>Row identity</h2><div class="grid2"><label>Field<select name="field" required>'+selectOptions(fields(),draft.field)+'</select></label><label>Row number'+input('rowNumber',draft.rowNumber,'type="number" min="0" max="2147483647" step="1" required')+'</label></div><label>Row type <span class="optional">Optional</span>'+input('rowType',draft.rowType,'maxlength="40" placeholder="A, B, C…"')+'</label><label>Default panel type<select name="panelTypeId" required>'+typeOptions(draft.panelTypeId)+'</select></label><p class="hint">Type identity is Description + Current Class. Colour is its visual marker. Each group can have its own type.</p></section><section class="card"><h2>Panels · North → South</h2><label>Total panels'+input('panelCount',draft.panelCount,'type="number" min="0" max="10000" step="1" placeholder="Not supplied"')+'</label><label class="check-line"><input name="panelsKnown" type="checkbox" '+(draft.panelsKnown?'checked':'')+'> Panel count and groups are fully supplied</label>'+groupInputs+btn('Add panel group','plan-add-group','secondary')+'<p class="hint">Groups follow installation order from the north end. Their quantities must add up to the total when the instructions are complete.</p></section><section class="card"><h2>Dampers</h2><label>Total dampers'+input('damperCount',draft.damperCount,'type="number" min="0" max="100" step="1" placeholder="Not supplied"')+'</label><label class="check-line"><input name="dampersKnown" type="checkbox" '+(draft.dampersKnown?'checked':'')+'> Damper instructions are fully supplied</label><p class="hint">Post numbers start at the north end. They are separate from panel numbers.</p>'+damperInputs+btn('Add damper','plan-add-damper','secondary')+'</section><section class="card"><h2>Additional instructions</h2><div class="grid2"><label>Slope (degrees)'+input('slope',draft.slope,'type="number" min="-90" max="90" step="any" placeholder="Not supplied"')+'</label><label>Lower bearing side'+input('lowerBearingSide',draft.lowerBearingSide,'maxlength="80" placeholder="Not supplied"')+'</label></div><label>Motor after panel number'+input('motorAfterPanel',draft.motorAfterPanel,'type="number" min="1" max="10000" step="1" placeholder="Position not supplied"')+'</label></section><section class="card plan-pallet-constructor"><h2>Pallet placement <span class="optional">Optional</span></h2><p class="hint">Place each pallet between this row and a recorded adjacent row. Panel positions count from North → South.</p>'+palletInputs+btn('Add pallet position','plan-add-pallet','secondary')+'<p class="hint">Enter only confirmed positions. The reference photo does not set default pallet quantities or motor positions.</p></section><section class="card"><h2>Review & source</h2><label>Status<select name="status">'+option('needs_review','Needs review',draft.status)+option('partial','Awaiting information',draft.status)+option('verified','Verified',draft.status)+'</select></label><label>Panel source'+input('panelSource',draft.source.panels,'maxlength="1000"')+'</label><label>Damper source'+input('damperSource',draft.source.dampers,'maxlength="1000"')+'</label><label>Notes<textarea name="notes" maxlength="5000">'+esc(draft.notes)+'</textarea></label></section><button type="submit" class="primary">Save installation plan</button>'+btn('Cancel','back')+'</form>');
+    renderPage(editBase?'Edit row '+editBase.rowNumber:'Add row plan', '<p class="hint">Constructor · All positions count from North → South. Leave unsupplied values blank.</p><form data-form="plan-save"><section class="card"><h2>Row identity</h2><div class="grid2"><label>Field<select name="field" required>'+selectOptions(fields(),draft.field)+'</select></label><label>Row number'+input('rowNumber',draft.rowNumber,'type="number" min="0" max="2147483647" step="1" required')+'</label></div><label>Row type <span class="optional">Optional</span>'+input('rowType',draft.rowType,'maxlength="40" placeholder="A, B, C…"')+'</label><label>Default panel type<select name="panelTypeId" required>'+typeOptions(draft.panelTypeId)+'</select></label><p class="hint">Type identity is Description + Current Class. Colour is its visual marker. Each group can have its own type.</p></section><section class="card"><h2>Panels · North → South</h2><label>Total panels'+input('panelCount',draft.panelCount,'type="number" min="0" max="10000" step="1" placeholder="Not supplied"')+'</label><label class="check-line"><input name="panelsKnown" type="checkbox" '+(draft.panelsKnown?'checked':'')+'> Panel count and groups are fully supplied</label>'+groupInputs+btn('Add panel group','plan-add-group','secondary')+'<p class="hint">Groups follow installation order from the north end. Their quantities must add up to the total when the instructions are complete.</p></section><section class="card"><h2>Dampers</h2><label>Total dampers'+input('damperCount',draft.damperCount,'type="number" min="0" max="100" step="1" placeholder="Not supplied"')+'</label><label class="check-line"><input name="dampersKnown" type="checkbox" '+(draft.dampersKnown?'checked':'')+'> Damper instructions are fully supplied</label><p class="hint">Post numbers start at the north end. They are separate from panel numbers.</p>'+damperInputs+btn('Add damper','plan-add-damper','secondary')+'</section><section class="card"><h2>Additional instructions</h2><div class="grid2"><label>Slope (degrees)'+input('slope',draft.slope,'type="number" min="-90" max="90" step="any" placeholder="Not supplied"')+'</label><label>Lower bearing side'+input('lowerBearingSide',draft.lowerBearingSide,'maxlength="80" placeholder="Not supplied"')+'</label></div><label>Motor after panel number'+input('motorAfterPanel',draft.motorAfterPanel,'type="number" min="1" max="10000" step="1" placeholder="Position not supplied"')+'</label></section><section class="card plan-pallet-constructor"><h2>Automatic pallet placement</h2><p class="hint">The forklift layout is calculated from both row counts. No carryover is tracked.</p><div id="plan-pallet-preview">'+palletConstructorPreview(draft)+'</div>'+(draft.pallets.length?'<details><summary>Existing manual positions</summary>'+palletInputs+'<p class="hint">These saved positions are retained separately. The automatic forklift layout uses both row counts.</p></details>':'')+'</section><section class="card"><h2>Review & source</h2><label>Status<select name="status">'+option('needs_review','Needs review',draft.status)+option('partial','Awaiting information',draft.status)+option('verified','Verified',draft.status)+'</select></label><label>Panel source'+input('panelSource',draft.source.panels,'maxlength="1000"')+'</label><label>Damper source'+input('damperSource',draft.source.dampers,'maxlength="1000"')+'</label><label>Notes<textarea name="notes" maxlength="5000">'+esc(draft.notes)+'</textarea></label></section><button type="submit" class="primary">Save installation plan</button>'+btn('Cancel','back')+'</form>');
     if (editDirty) api.markDirty();
   }
   function readDraft(form) {
@@ -224,6 +313,25 @@ export function createRowPlansFeature(api) {
     }
     return {items:copy(items),revisions,newCount};
   }
+  function handleInput(el) {
+    if (el.dataset?.palletNeighbor !== undefined) {
+      if (currentScreen==='rowPlanEdit') captureDraft();
+      palletNeighborId = el.value;
+      if (currentScreen==='rowPlanEdit') {
+        const preview = typeof document!=='undefined' && document.querySelector('#plan-pallet-preview');
+        if (preview) preview.innerHTML=palletConstructorPreview(draft);
+      } else if (currentScreen==='rowPlan') render('rowPlan');
+      return true;
+    }
+    if (currentScreen!=='rowPlanEdit' || !draft || !/^(field|rowNumber|panelCount|panelTypeId|groupQuantity_\d+|groupSide_\d+|groupType_\d+)$/.test(el.name || '')) return false;
+    const form=el.closest?.('form[data-form="plan-save"]');
+    if (!form) return false;
+    draft=readDraft(new FormData(form));editDirty=true;api.markDirty();
+    if (el.name==='field' || el.name==='rowNumber') palletNeighborId=null;
+    const preview=typeof document!=='undefined' && document.querySelector('#plan-pallet-preview');
+    if (preview) preview.innerHTML=palletConstructorPreview(draft);
+    return true;
+  }
   function render(screen) {
     currentScreen=screen;
     ({rowPlans:drawList,rowPlan:drawPlan,rowPlanEdit:drawEdit,panelTypes:drawTypes,panelTypeEdit:drawTypeEdit,rowPlanImport:drawImport}[screen] || drawList)();
@@ -232,7 +340,7 @@ export function createRowPlansFeature(api) {
     if (!action.startsWith('plan-')) return false;
     if (action==='plan-open') {teamContext=null;parent={screen:'settings',id:null};field='';query='';api.navigate('rowPlans');}
     else if (action==='plan-list') api.navigate('rowPlans');
-    else if (action==='plan-row') {selectedRow=id;tab='plan';mode='panels';api.navigate('rowPlan');}
+    else if (action==='plan-row') {selectedRow=id;palletNeighborId=null;tab='plan';mode='panels';api.navigate('rowPlan');}
     else if (action==='plan-new') startEdit(null);
     else if (action==='plan-edit') {selectedRow=id || selectedRow;startEdit(selectedRow);}
     else if (action==='plan-types') {if(id==='settings'){teamContext=null;parent={screen:'settings',id:null};typeParent='settings';}else typeParent='rowPlans';selectedType=null;api.navigate('panelTypes');}
@@ -282,7 +390,7 @@ export function createRowPlansFeature(api) {
     return true;
   }
   return {
-    hasScreen:screen=>ROUTES.has(screen),render,handleAction,handleForm,
+    hasScreen:screen=>ROUTES.has(screen),render,handleAction,handleForm,handleInput,
     reload(screen) {
       if(screen==='rowPlanEdit') {
         const latest=planById(editBase?.id || draft?.id || selectedRow);
