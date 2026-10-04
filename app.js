@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.0';
 
 const supabase = createClient('https://oimiygdkrnsjzlivwafs.supabase.co','sb_publishable_WKPV0lAUCl1Lr53UujCR3g_zlQay4DS');
-import {createRowPlansFeature} from './row-plans.js?v=row-plans-20261004-1';
+import {createRowPlansFeature} from './row-plans.js?v=row-plans-20261004-2';
 const defaultJobGroups=['Team Leads','Technicians','Mechanics'];
 const seed = {people:[],fields:['North','South'],workTypes:['Solar panel installation','Bolt tightening','Bracket preparation','Truck unloading'],workUnits:{'Truck unloading':'loads'},jobGroups:defaultJobGroups,archivedJobGroups:[],teams:[],assignmentHistory:[],rowPlans:[],rowPlanHistory:[],panelTypes:[],defaultTeamLeaderId:null};
 const weatherSite={name:'P223_Nagbøl',place:'Solar Park Nagbøl',address:'Nagbølvej 83A, 6640 Lunderskov'};

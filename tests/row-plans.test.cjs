@@ -111,3 +111,24 @@ test('loading latest invalidates a stale import preview before apply',async()=>{
   assert.doesNotMatch(h.state.html,/Apply reviewed import/);await h.feature.handleAction('plan-import-apply');assert.equal(h.events.filter(e=>e.kind).length,0);
   assert.match(h.state.html,/Photo 1/);
 });
+
+test('pallets have their own row-plan section and direct diagram action',async()=>{
+  const {createRowPlansFeature}=await load(),p=plan({pallets:[{panels:36,afterPanel:75,adjacentRow:902},{panels:24,afterPanel:25,adjacentRow:902}]}),h=harness(createRowPlansFeature,[p]);
+  await h.feature.handleAction('plan-row',p.id);
+  assert.match(h.state.html,/<section class="card plan-pallet-section"/);
+  assert.match(h.state.html,/2 pallets · 60 panels/);
+  assert.match(h.state.html,/Rows 901 ↔ 902/);
+  assert.ok(h.state.html.indexOf('After panel 25')<h.state.html.indexOf('After panel 75'));
+  await h.feature.handleAction('plan-pallets');
+  assert.match(h.state.html,/aria-label="Pallets between row 901 and recorded adjacent row 902"/);
+  assert.match(h.state.html,/24 panels · after 25/);
+  assert.equal(h.events.filter(e=>e.kind).length,0);
+});
+test('pallet instructions persist exact manually supplied positions and appear in a separate constructor card',async()=>{
+  const {createRowPlansFeature}=await load(),p=plan({pallets:[{panels:36,afterPanel:25,adjacentRow:902}]}),h=harness(createRowPlansFeature,[p]);
+  await h.feature.handleAction('plan-edit',p.id);
+  assert.match(h.state.html,/<section class="card plan-pallet-constructor"/);
+  await h.feature.handleForm('plan-save',editForm(p));
+  const write=h.events.find(e=>e.kind);assert.deepEqual(write.item.pallets,p.pallets);
+  assert.deepEqual(write.expected,{revision:3});assert.equal(h.events.some(e=>e.kind?.includes('team')),false);
+});
