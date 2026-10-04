@@ -175,6 +175,7 @@ test('row cards automatically open a known pair and recalculate on right-row sel
   assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,6);
   const select={dataset:{palletNeighbor:''},value:'short'};
   h.feature.handleInput(select);assert.match(h.state.html,/5 pallets/);assert.match(h.state.html,/rows 901 and 903/);
+  h.feature.handleInput({...select,value:''});assert.match(h.state.html,/Choose the row on your right/);assert.doesNotMatch(h.state.html,/class="svg-auto-pallet"/);
   assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 

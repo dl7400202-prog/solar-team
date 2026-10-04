@@ -164,7 +164,7 @@ export function createRowPlansFeature(api) {
   }
   function palletNeighbor(plan) {
     const candidates = plans().filter(row => row.field===plan.field && row.rowNumber!==plan.rowNumber && row.id!==plan.id);
-    return candidates.find(row => row.id===palletNeighborId) || (!palletNeighborId && candidates.find(row => row.rowNumber===plan.rowNumber+1)) || null;
+    return candidates.find(row => row.id===palletNeighborId) || (palletNeighborId===null && candidates.find(row => row.rowNumber===plan.rowNumber+1)) || null;
   }
   function palletPairControls(plan) {
     const neighbor = palletNeighbor(plan);
