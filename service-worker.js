@@ -1,5 +1,5 @@
-const CACHE = 'solar-team-v13';
-const ASSETS = ['./', './index.html', './styles.css?v=row-plans-20261004-1', './app.js?v=row-plans-20261004-1', './row-plans.js?v=row-plans-20261004-1', './row-plans.css?v=row-plans-20261004-1', './manifest.webmanifest', './icon.svg'];
+const CACHE = 'solar-team-v14';
+const ASSETS = ['./', './index.html', './styles.css?v=row-plans-20261004-2', './app.js?v=row-plans-20261004-2', './row-plans.js?v=row-plans-20261004-2', './row-plans.css?v=row-plans-20261004-2', './manifest.webmanifest', './icon.svg'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', event => {

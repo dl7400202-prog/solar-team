@@ -6,6 +6,8 @@ All group and post numbers start at the north end and proceed south. Panel ordin
 
 The constructor stores ordered panel groups, per-group type and positive connector direction, individual damper posts and East/West sides, slope and lower bearing side. Motor and pallet positions are optional and must be entered from a confirmed source.
 
+Each row has a separate **Pallet placement** section and constructor card. Record panels on the pallet, the position after a panel counted from north, and the adjacent row. The row card links directly to **Diagram → Pallets**, which shows placements between the two rows. Positions are listed north to south for each adjacent row; empty layouts await real source information.
+
 `verified` means both required sections are supplied. `partial` means another section is awaiting information. `needs_review` retains uncertain markings or connector directions. Unknown counts use `null`, rather than zero. Explicit zero means no panels or dampers are required.
 
 Imports accept an array of full plans or an object containing `plans`. Preview validates the entire input and captures existing revisions before Apply. Saving rejects a stale revision; Load latest record replaces the draft only after confirmation. Previous saved plans remain in `rowPlanHistory`.
