@@ -180,3 +180,13 @@ test('row cards automatically open a known pair and recalculate on right-row sel
 });
 
 
+
+test('viewer can filter rows and choose a pallet neighbour, but cannot open editors or submit changes',async()=>{
+ const {createRowPlansFeature}=await load(),p=plan(),right=plan({id:'right',rowNumber:902}),h=harness(createRowPlansFeature,[p,right]);h.api.canEdit=()=>false;
+ await h.feature.handleAction('plan-row',p.id);await h.feature.handleAction('plan-pallets');assert.match(h.state.html,/6 pallets/);
+ await h.feature.handleAction('plan-edit',p.id);assert.match(h.state.feedback,/read-only/);assert.notEqual(h.state.screen,'rowPlanEdit');
+ await h.feature.handleForm('plan-save',editForm(p));assert.equal(h.events.filter(e=>e.kind).length,0);
+ await h.feature.handleAction('plan-types','settings');assert.equal((h.state.html.match(/class="card plan-type-card"/g)||[]).length,7);assert.doesNotMatch(h.state.html,/data-action="plan-type-edit"/);
+});
+
+

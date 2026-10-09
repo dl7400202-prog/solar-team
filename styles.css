@@ -172,6 +172,7 @@ input[type=checkbox]{width:20px;height:20px;flex-shrink:0;accent-color:var(--gre
 #feedback p{margin:0 0 8px}
 #toast{position:fixed;bottom:calc(102px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:calc(100% - 32px);width:max-content;z-index:10;background:#132b43;color:white;border-radius:12px;padding:12px 18px;opacity:0;pointer-events:none;font-size:14px}
 #toast.show{opacity:1}
+.viewer-mode{margin:0 0 16px;padding:10px 14px;border-radius:10px;background:#e8f3fb;color:#28526f;font-size:13px;font-weight:600}
 .auth{max-width:480px;margin:24px auto}
 input,button,select,textarea{scroll-margin-bottom:130px}
 #access-panel{overflow-wrap:anywhere}
