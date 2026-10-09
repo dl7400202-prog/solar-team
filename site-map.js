@@ -1,6 +1,7 @@
 /* Coordinates stay in the signed-in shared workspace. Device fixes stay in memory. */
 const point = p => Array.isArray(p) && p.length===2 && p.every(v=>Number.isFinite(v)&&Math.abs(v)<=2e7);
 const supported = crs => ['EPSG:25832','EPSG:32632'].includes(crs);
+const definition = crs => crs==='EPSG:25832'?'+proj=utm +zone=32 +ellps=GRS80 +units=m +no_defs':'+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs';
 const FRESH_MS=30000;
 export function mapBounds(rows,padding=20) {
   const points=rows.flatMap(r=>[r.north,r.south]).filter(point);
@@ -16,7 +17,11 @@ export function nearestRow(p,rows) {
 export function projectLocation(fix,crs,proj) {
   if(!supported(crs)||typeof proj!=='function'||!Number.isFinite(fix?.latitude)||!Number.isFinite(fix?.longitude))return null;
   if(Math.abs(fix.latitude)>90||Math.abs(fix.longitude)>180)return null;
-  try{const definition=crs==='EPSG:25832'?'+proj=utm +zone=32 +ellps=GRS80 +units=m +no_defs':'+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs';const result=proj('EPSG:4326',definition,[fix.longitude,fix.latitude]);return point(result)?result:null;}catch{return null;}
+  try{const result=proj('EPSG:4326',definition(crs),[fix.longitude,fix.latitude]);return point(result)?result:null;}catch{return null;}
+}
+export function sourcePointToLocation(p,crs,proj) {
+  if(!point(p)||!supported(crs)||typeof proj!=='function')return null;
+  try{const result=proj(definition(crs),'EPSG:4326',p);return point(result)&&Math.abs(result[0])<=180&&Math.abs(result[1])<=90?{lat:result[1],lng:result[0]}:null;}catch{return null;}
 }
 export function createLocationTracker({geolocation,secure,aligned,now=()=>Date.now(),onChange=()=>{}}) {
   let watch=null,epoch=0,wanted=false,status='idle',fix=null;
@@ -43,7 +48,7 @@ export function createLocationTracker({geolocation,secure,aligned,now=()=>Date.n
 const messages={idle:'Location is off. Select My position to enable it.',alignment:'GPS alignment needs the coordinate system from the original project. Rows are shown in source coordinates.',locating:'Finding your position…',watching:'Live position',paused:'Location paused while this map is hidden.',stale:'Location is out of date. Waiting for a fresh position.',denied:'Location permission was denied. Allow location access in browser or phone settings, then try again.',timeout:'No fresh position arrived. Move to an open area and try again.',unavailable:'Your position is unavailable. Check location settings and try again.',unsupported:'This device does not support browser location.',insecure:'Location requires an HTTPS connection.'};
 export function createSiteMap(api) {
   const esc=api.esc,db=()=>api.getDb(),source=()=>db().siteMap;
-  let root=null,svg=null,abort=null,resize=null,timer=null,view=null,origin=null,filter='',query='',selected=null,pendingRow=null,pendingSearch=false,follow=false,visible=false;
+  let root=null,svg=null,abort=null,resize=null,timer=null,view=null,origin=null,filter='',query='',selected=null,pendingRow=null,pendingSearch=false,follow=false,visible=false,mode='plan',satelliteState='idle';
   const geometry=()=>Array.isArray(source()?.rows)?source().rows.filter(r=>Number.isSafeInteger(r.rowNumber)&&r.rowNumber>=0&&typeof r.field==='string'&&point(r.north)&&point(r.south)):[];
   let planDocument=null,planIndex=new Map();
   const planFor=row=>{const current=db();if(current!==planDocument){planDocument=current;planIndex=new Map((current.rowPlans||[]).map(p=>[p.field+'\0'+p.rowNumber,p]));}return planIndex.get(row.field+'\0'+row.rowNumber);};
@@ -52,10 +57,19 @@ export function createSiteMap(api) {
   const searchResults=()=>filtered().filter(r=>matches(r,query));
   const projection=()=>api.projector||globalThis.proj4;
   const aligned=()=>supported(source()?.crs)&&typeof projection()==='function';
-  const tracker=createLocationTracker({geolocation:api.geolocation||globalThis.navigator?.geolocation,secure:api.secure??globalThis.isSecureContext,aligned,onChange:state=>{
+  const tracker=createLocationTracker({geolocation:api.geolocation||globalThis.navigator?.geolocation,secure:api.secure??globalThis.isSecureContext,aligned:()=>mode==='satellite'?['ready','alignment'].includes(satelliteState):aligned(),onChange:state=>{
     if(!visible)return;
+    if(mode==='satellite'){if(!state.enabled)follow=false;paintLocation();return;}
     if(follow&&state.fix){const p=projectLocation(state.fix,source()?.crs,projection());if(p){center(p,true);paint();return;}}
     if(!state.enabled)follow=false;
+    paintLocation();
+  }});
+  const satellite=api.createSatellite?.({toLocation:p=>sourcePointToLocation(p,source()?.crs,projection()),colourFor:(row,index)=>{const typeId=planFor(row)?.panelGroups?.[index]?.typeId;return (db().panelTypes||[]).find(t=>t.id===typeId)?.color;},onSelect:row=>select(row),onGesture:()=>{follow=false;paintLocation();},onStatus:state=>{
+    satelliteState=state;if(!root||!visible)return;
+    const message=root.querySelector('.site-map-google-message'),canvas=root.querySelector('.site-map-google-canvas');
+    if(message){message.hidden=!['loading','error'].includes(state);message.textContent=state==='loading'?'Loading Google Maps…':'Google Maps is temporarily unavailable. Use Row plan or reload this page after Google access is activated.';}
+    if(canvas)canvas.hidden=state==='error';
+    if(mode==='satellite'&&state==='error'){follow=false;tracker.stop();}
     paintLocation();
   }});
   const button=(label,action,extra='')=>'<button type="button" data-map-action="'+action+'" '+extra+'>'+label+'</button>';
@@ -63,7 +77,7 @@ export function createSiteMap(api) {
     if(filter!==field||query!==term){view=null;selected=null;pendingSearch=true;follow=false;}
     filter=field;query=term;
     const rows=filtered();
-    return '<section class="site-map card" aria-label="Site map"><div class="site-map-heading"><div><h2>Site map</h2><small>'+rows.length+' mapped rows · North at the top</small></div>'+button('All rows','fit','class="compact"')+'</div>'+(!source()?.crs?'<p class="plan-notice">GPS alignment awaits the coordinate system from the original project.</p>':'')+'<div class="site-map-surface"><svg class="site-map-svg" tabindex="0" role="group" aria-label="Row map. Drag to pan, pinch or use plus and minus to zoom." xmlns="http://www.w3.org/2000/svg"></svg><span class="site-map-north" aria-hidden="true">↑<br>N</span><div class="site-map-zoom" aria-label="Map zoom">'+button('+','zoom-in','aria-label="Zoom in"')+button('−','zoom-out','aria-label="Zoom out"')+'</div><div class="site-map-scale" aria-hidden="true"></div></div><div class="site-map-location-controls">'+button('◎ My position','locate','class="secondary"')+button('Follow me','follow','class="secondary" aria-pressed="false"')+button('Stop location','stop','class="text-button" hidden')+'</div><p class="site-map-status hint" role="status"></p><p class="site-map-nearest hint"></p><div class="site-map-selection" aria-live="polite"></div><p class="hint">Drag to move · Pinch to zoom · Tap a row to open its details. Distances use the source coordinates. Device location is not saved.</p>'+((query&&!searchResults().length)||!rows.length?'<p class="plan-notice">No mapped rows match this search. Clear the filters to find a row.</p>':'')+'</section>';
+    return '<section class="site-map card" aria-label="Site map"><div class="site-map-heading"><div><h2>Site map</h2><small>'+rows.length+' mapped rows · North at the top</small></div>'+button('All rows','fit','class="compact"')+'</div>'+(satellite?'<div class="site-map-view-switch" role="group" aria-label="Map view">'+button('Row plan','view-plan','aria-pressed="'+(mode==='plan')+'"')+button('Satellite','view-satellite','aria-pressed="'+(mode==='satellite')+'"')+'</div>':'')+(!aligned()?'<p class="plan-notice site-map-alignment">GPS alignment awaits the coordinate system from the original project.</p>':'')+'<div class="site-map-plan" '+(mode==='plan'?'':'hidden')+'><div class="site-map-surface"><svg class="site-map-svg" tabindex="0" role="group" aria-label="Row map. Drag to pan, pinch or use plus and minus to zoom." xmlns="http://www.w3.org/2000/svg"></svg><span class="site-map-north" aria-hidden="true">↑<br>N</span><div class="site-map-zoom" aria-label="Map zoom">'+button('+','zoom-in','aria-label="Zoom in"')+button('−','zoom-out','aria-label="Zoom out"')+'</div><div class="site-map-scale" aria-hidden="true"></div></div></div><div class="site-map-google-surface" '+(mode==='satellite'?'':'hidden')+'><div class="site-map-google-canvas" role="region" aria-label="Satellite map"></div><div class="site-map-google-message" role="status">Loading Google Maps…</div></div><div class="site-map-location-controls">'+button('◎ My position','locate','class="secondary"')+button('Follow me','follow','class="secondary" aria-pressed="false"')+button('Stop location','stop','class="text-button" hidden')+'</div><p class="site-map-status hint" role="status"></p><p class="site-map-nearest hint"></p><div class="site-map-selection" aria-live="polite"></div><p class="hint site-map-help">Drag to move · Pinch to zoom · Tap a row to open its details. Distances use the source coordinates. Device location is not saved.</p>'+((query&&!searchResults().length)||!rows.length?'<p class="plan-notice">No mapped rows match this search. Clear the filters to find a row.</p>':'')+'</section>';
   }
   function fit(rows=filtered()){
     const bounds=mapBounds(rows);if(!bounds)return;
@@ -77,6 +91,7 @@ export function createSiteMap(api) {
   function mapPoint(clientX,clientY){const bounds=svg.getBoundingClientRect();return [view.x+(clientX-bounds.left)/bounds.width*view.width,view.y+(clientY-bounds.top)/bounds.height*view.height];}
   function paint(){
     if(!root||!svg||!view||!origin)return;
+    if(mode==='satellite'){satellite?.update(filtered(),selected);paintSelection(geometry().find(r=>r.rowNumber===selected));paintLocation();return;}
     svg.setAttribute('viewBox',[view.x,view.y,view.width,view.height].join(' '));svg.setAttribute('preserveAspectRatio','none');
     const rows=filtered(),selection=geometry().find(r=>r.rowNumber===selected&&(!filter||r.field===filter));
     const units=view.width/(svg.clientWidth||350),labels=[];
@@ -100,27 +115,45 @@ export function createSiteMap(api) {
     const scale=root.querySelector('.site-map-scale'),target=view.width/4,power=10**Math.floor(Math.log10(target)),unit=target/power>=5?5:target/power>=2?2:1,metres=unit*power;scale.style.width=Math.max(1,metres/view.width*(svg.clientWidth||350))+'px';scale.textContent=metres>=1000?metres/1000+' km':metres+' m';
     paintSelection(selection);paintLocation();
   }
-  function paintSelection(row){const host=root.querySelector('.site-map-selection');if(!row){host.innerHTML='';return;}const plan=planFor(row),count=plan?.panelCount??row.panelCount;host.innerHTML='<div class="site-map-row-card"><strong>Row '+row.rowNumber+' · '+esc(row.field)+'</strong><small>Pile plan row '+esc(row.pilePlanRow)+' · '+esc(count)+' panels</small><small>Motor post '+esc(row.motor?.post)+' · ID '+esc(row.motor?.id)+'</small>'+(plan&&plan.panelCount!==row.panelCount?'<p class="plan-notice">This plan has changed since the coordinate import. Map geometry still uses the source layout.</p>':'')+'<div class="site-map-row-actions">'+button('Open row','open','class="secondary"')+button('Pallet placement','pallets','class="secondary"')+'</div></div>';}
+  function paintSelection(row){const host=root.querySelector('.site-map-selection');if(!row){host.innerHTML='';return;}const plan=planFor(row),count=plan?.panelCount??row.panelCount,groups=(plan?.panelGroups||[]).map(g=>{const type=(db().panelTypes||[]).find(t=>t.id===g.typeId);return esc(g.quantity)+' × '+esc(g.sourceToken||type?.name||'Unknown type')+' · '+(g.positiveSide==='N'?'↑ +N':g.positiveSide==='S'?'↓ +S':'Direction unconfirmed');});host.innerHTML='<div class="site-map-row-card"><strong>Row '+row.rowNumber+' · '+esc(row.field)+'</strong><small>Pile plan row '+esc(row.pilePlanRow)+' · '+esc(count)+' panels</small>'+groups.map(group=>'<small>'+group+'</small>').join('')+'<small>Motor post '+esc(row.motor?.post)+' · ID '+esc(row.motor?.id)+'</small>'+(plan?.dampersKnown?'<small>Dampers: '+plan.dampers.map(d=>esc(d.post)+' '+esc(d.side==='E'?'East':'West')).join(' · ')+'</small>':'')+(plan&&plan.panelCount!==row.panelCount?'<p class="plan-notice">This plan has changed since the coordinate import. Map geometry still uses the source layout.</p>':'')+'<div class="site-map-row-actions">'+button('Open row','open','class="secondary"')+button('Pallet placement','pallets','class="secondary"')+'</div></div>';}
   function paintLocation(){
     if(!visible||!root||!svg)return;
     const state=tracker.state(),p=state.fix&&projectLocation(state.fix,source()?.crs,projection()),status=root.querySelector('.site-map-status'),nearest=root.querySelector('.site-map-nearest'),user=svg.querySelector('.site-map-user');
+    if(mode==='satellite')satellite?.showLocation(state.fix,{follow:follow&&state.enabled});
     status.textContent=messages[state.status]||messages.idle;
     if(state.fix)status.textContent+=' · Accuracy ±'+Math.ceil(state.fix.accuracy)+' m · Updated '+new Date(state.fix.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     if(user)user.innerHTML='';nearest.textContent='';
-    if(p&&view&&origin){const [x,y]=xy(p),radius=state.fix.accuracy,units=view.width/(svg.clientWidth||350);user.innerHTML='<circle class="site-map-accuracy" cx="'+x+'" cy="'+y+'" r="'+radius+'" fill="#2187ff22" stroke="#2187ff" stroke-width="1" vector-effect="non-scaling-stroke"/><circle class="site-map-dot" cx="'+x+'" cy="'+y+'" r="'+units*6+'" fill="#1674e9" stroke="#fff" stroke-width="2" vector-effect="non-scaling-stroke"><title>You are here. Accuracy ±'+Math.ceil(radius)+' metres.</title></circle>';
-      const match=nearestRow(p,geometry());if(match)nearest.textContent=match.distance>100?'Your reported position is outside the row area.':'Nearest row centreline: '+match.row.rowNumber+' · '+Math.round(match.distance)+' m. Accuracy ±'+Math.ceil(radius)+' m; confirm the row number on site.';
+    if(p&&view&&origin){if(mode==='plan'){const [x,y]=xy(p),radius=state.fix.accuracy,units=view.width/(svg.clientWidth||350);user.innerHTML='<circle class="site-map-accuracy" cx="'+x+'" cy="'+y+'" r="'+radius+'" fill="#2187ff22" stroke="#2187ff" stroke-width="1" vector-effect="non-scaling-stroke"/><circle class="site-map-dot" cx="'+x+'" cy="'+y+'" r="'+units*6+'" fill="#1674e9" stroke="#fff" stroke-width="2" vector-effect="non-scaling-stroke"><title>You are here. Accuracy ±'+Math.ceil(radius)+' metres.</title></circle>';}
+      const match=nearestRow(p,geometry());if(match)nearest.textContent=match.distance>100?'Your reported position is outside the row area.':'Nearest row centreline: '+match.row.rowNumber+' · '+Math.round(match.distance)+' m. Accuracy ±'+Math.ceil(state.fix.accuracy)+' m; confirm the row number on site.';
     }
     root.querySelector('[data-map-action="follow"]').setAttribute('aria-pressed',String(follow&&state.enabled));root.querySelector('[data-map-action="stop"]').hidden=!state.enabled;
+    const unavailable=mode==='satellite'&&!['ready','alignment'].includes(satelliteState);for(const action of ['locate','follow'])root.querySelector('[data-map-action="'+action+'"]').disabled=unavailable;
     if(svg&&view)svg.setAttribute('viewBox',[view.x,view.y,view.width,view.height].join(' '));
   }
-  function select(row,focus=true){if(!row)return;selected=row.rowNumber;follow=false;if(focus)fit([row]);paint();}
+  function select(row,focus=true){if(!row)return;selected=row.rowNumber;follow=false;if(mode==='satellite'){satellite.update(filtered(),selected,{focus});paintSelection(row);paintLocation();return;}if(focus)fit([row]);paint();}
+  function updateModeCopy(){
+    const notice=root.querySelector('.site-map-alignment');if(notice)notice.textContent=mode==='satellite'?'Your position uses phone GPS. Row outlines await the coordinate system from the original project.':'GPS alignment awaits the coordinate system from the original project.';
+    root.querySelector('.site-map-help').textContent=mode==='satellite'?'Use two fingers to move the map · My position requests phone location. Row details and pallet placement remain available through search.':'Drag to move · Pinch to zoom · Tap a row to open its details. Distances use the source coordinates. Device location is not saved.';
+  }
+  function setMode(next){
+    if(!root||next===mode||next==='satellite'&&!satellite)return;
+    tracker.stop();follow=false;mode=next;
+    root.querySelector('.site-map-plan').hidden=mode!=='plan';root.querySelector('.site-map-google-surface').hidden=mode!=='satellite';
+    for(const item of root.querySelectorAll('.site-map-view-switch button'))item.setAttribute('aria-pressed',String(item.dataset.mapAction==='view-'+mode));
+    updateModeCopy();
+    if(mode==='satellite'){satelliteState='loading';satellite.update(filtered(),selected,{focus:selected!==null});satellite.mount(root.querySelector('.site-map-google-canvas'));paintSelection(geometry().find(r=>r.rowNumber===selected));paintLocation();}
+    else{satellite.destroy();paint();}
+  }
   function mount(host){
     abort?.abort();resize?.disconnect();if(timer)clearInterval(timer);root=host;svg=root?.querySelector('svg.site-map-svg');if(!root||!svg)return;
     visible=true;abort=new AbortController();const signal=abort.signal;
+    updateModeCopy();
+    if(mode==='satellite'){satelliteState='loading';satellite.update(filtered(),selected,{focus:selected!==null});satellite.mount(root.querySelector('.site-map-google-canvas'));}
     if(!view)fit();if(pendingRow){select(pendingRow);pendingRow=null;}else if(pendingSearch&&query&&searchResults().length===1)select(searchResults()[0]);else paint();pendingSearch=false;
     if(typeof ResizeObserver==='function'){resize=new ResizeObserver(()=>{if(!visible||!view||!svg.clientWidth||!svg.clientHeight)return;const height=view.width*svg.clientHeight/svg.clientWidth;view.y+=(view.height-height)/2;view.height=height;paint();});resize.observe(svg);}
     root.addEventListener('click',event=>{const action=event.target.closest('[data-map-action]')?.dataset.mapAction;if(!action)return;
-      if(action==='fit'){follow=false;selected=null;fit();paint();}
+      if(action==='view-plan'||action==='view-satellite'){setMode(action==='view-plan'?'plan':'satellite');}
+      else if(action==='fit'){follow=false;selected=null;if(mode==='satellite'){satellite.update(filtered(),selected);satellite.fit();paintSelection(null);paintLocation();}else{fit();paint();}}
       else if(action==='zoom-in'||action==='zoom-out')zoom(action==='zoom-in'?.6:1/.6);
       else if(action==='locate'){follow=true;const state=tracker.state();if(state.fix){const p=projectLocation(state.fix,source()?.crs,projection());if(p){center(p,true);paint();}}else tracker.start();}
       else if(action==='follow'){follow=!(follow&&tracker.state().enabled);if(follow){tracker.start();const fix=tracker.state().fix,p=fix&&projectLocation(fix,source()?.crs,projection());if(p)center(p,true);}paint();}
@@ -142,6 +175,6 @@ export function createSiteMap(api) {
     window.addEventListener('pagehide',()=>{follow=false;tracker.stop();},{signal});
     timer=setInterval(paintLocation,1000);
   }
-  function hide(){visible=false;abort?.abort();abort=null;resize?.disconnect();resize=null;if(timer)clearInterval(timer);timer=null;tracker.dispose();follow=false;root=null;svg=null;}
+  function hide(){visible=false;abort?.abort();abort=null;resize?.disconnect();resize=null;if(timer)clearInterval(timer);timer=null;tracker.dispose();satellite?.destroy();mode='plan';follow=false;root=null;svg=null;}
   return {html,mount,hide,hasGeometry:()=>geometry().length>0,matches,selectRow:row=>{pendingRow=row;view=null;},tracker};
 }
