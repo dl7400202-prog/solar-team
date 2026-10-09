@@ -37,7 +37,7 @@ function harness(){
   const ctx=vm.createContext({createClient:()=>client,document,window:{addEventListener(){},scrollTo(){},confirm:()=>confirm},FormData:Data,structuredClone,console,setInterval(){},setTimeout(){return 1},clearTimeout(){},crypto:{randomUUID:()=> 'new-id'},Date,Intl});
   vm.runInContext(featureSource,ctx);vm.runInContext(source,ctx);
   const run=s=>vm.runInContext(s,ctx);
-  run(`user={id:'u',email:'demo@example.test'};ready=true;db={people:[{id:'a',name:'Mykola Zihura',role:'Technician',availability:'ON_SITE',active:true},{id:'b',name:'Mykola Yakibchuk',role:'Technician',availability:'ON_SITE',active:true},{id:'c',name:'Off Person',role:'Technician',availability:'OFF',active:true},{id:'d',name:'Archived Person',role:'Technician',availability:'ON_SITE',active:false}],fields:['North'],workTypes:['Panels','Bolts'],assignmentHistory:[],teams:[{id:'t',number:1,date:localDay(),members:['a'],field:'North',work:'Panels',from:120,to:null,status:'IN_PROGRESS',note:'',closed:false,issueResolved:false}]};`);
+  run(`user={id:'u',email:'demo@example.test'};ready=true;accessRole='editor';db={people:[{id:'a',name:'Mykola Zihura',role:'Technician',availability:'ON_SITE',active:true},{id:'b',name:'Mykola Yakibchuk',role:'Technician',availability:'ON_SITE',active:true},{id:'c',name:'Off Person',role:'Technician',availability:'OFF',active:true},{id:'d',name:'Archived Person',role:'Technician',availability:'ON_SITE',active:false}],fields:['North'],workTypes:['Panels','Bolts'],assignmentHistory:[],teams:[{id:'t',number:1,date:localDay(),members:['a'],field:'North',work:'Panels',from:120,to:null,status:'IN_PROGRESS',note:'',closed:false,issueResolved:false}]};`);
   return {run,nodes,get,calls,readQueries,cloud:row=>cloudRow=row,fail:e=>failure=e,confirm:v=>confirm=v,submit:async(kind,values,intent)=>{ctx.event={preventDefault(){},target:{dataset:{form:kind},values},submitter:{value:intent}};return run('submitForm(event)')}};
 }
 test('inclusive rows and missing endpoint never fabricate output',()=>{const h=harness();assert.equal(h.run('actualRows({from:120,to:155})'),36);for(const v of ['null','undefined','""','" "']){assert.equal(h.run(`actualRows({from:0,to:${v}})`),0);assert.equal(h.run(`isRow(${v})`),false)}assert.equal(h.run('actualRows({from:120,to:119})'),0);assert.equal(h.run('isRow(1.5)'),false);assert.equal(h.run('isRow(2147483648)'),false)});
@@ -107,4 +107,32 @@ test('automatic leader settings use the protected plan RPC with an optimistic pr
 test('unchanged shared revision polls only the small marker',async()=>{const h=harness();h.run("version=8;screen='today';db=normalise(db)");h.cloud({version:8,data:JSON.parse(h.run('JSON.stringify(db)'))});await h.run('refreshShared()');assert.deepEqual(h.readQueries,['version'])});
 test('new shared revision loads the full document once and refreshes the visible record',async()=>{const h=harness();h.run("version=8;screen='today';db=normalise(db)");const remote=JSON.parse(h.run('JSON.stringify(db)'));remote.teams[0].note='Colleague update';h.cloud({version:9,data:remote,initialized:true});await h.run('refreshShared()');assert.deepEqual(h.readQueries,['version','*']);assert.equal(h.run('version'),9);assert.equal(h.run("team('t').note"),'Colleague update')});
 test('worker install precaches the exact index and local module URLs',async()=>{const path=require('node:path'),worker=readFileSync(path.join(__dirname,'../service-worker.js'),'utf8'),index=readFileSync(path.join(__dirname,'../index.html'),'utf8');const required=[...index.matchAll(/(?:src|href)="((?:app\.js|styles\.css|row-plans\.css)[^"]*)"/g)].map(m=>'./'+m[1]);const moduleUrl=readFileSync(path.join(__dirname,'../app.js'),'utf8').match(/from '(\.\/row-plans\.js[^']*)'/)[1];required.push(moduleUrl);const listeners={},assets=[];vm.runInNewContext(worker,{self:{addEventListener:(name,fn)=>listeners[name]=fn,skipWaiting:()=>Promise.resolve()},caches:{open:async()=>({addAll:async urls=>assets.push(...urls)})}});let pending;listeners.install({waitUntil:p=>pending=p});await pending;for(const url of required)assert.ok(assets.includes(url),'Cache missing '+url)});
+
+
+test('viewer can inspect people, teams, history and pallet plans without editing controls',()=>{
+ const h=harness();h.run("accessRole='viewer';db=normalise(db);screen='today';drawToday()");
+ assert.doesNotMatch(h.get('#app').innerHTML,/data-action="create"/);assert.match(h.get('#app').innerHTML,/Viewing only/);
+ h.run("selected='t';screen='team';drawTeam()");assert.doesNotMatch(h.get('#app').innerHTML,/data-action="(record|teamEdit|reopen|resolveIssue)"/);assert.match(h.get('#app').innerHTML,/Row installation plans/);
+ h.run("screen='people';drawPeople()");assert.doesNotMatch(h.get('#app').innerHTML,/data-action="personNew"/);assert.match(h.get('#app').innerHTML,/Mykola/);
+ h.run("selected='a';screen='person';drawPerson()");assert.doesNotMatch(h.get('#app').innerHTML,/data-action="personEdit"/);
+});
+test('viewer and unknown role reject direct actions, edit routes and writes before RPC',async()=>{
+ const h=harness();h.run("accessRole='viewer';screen='today';db=normalise(db)");
+ await h.run("act('create')");assert.equal(h.run('screen'),'today');assert.equal(h.calls.length,0);
+ h.run("navigate('personEdit','a',true)");assert.equal(h.run('screen'),'today');
+ assert.equal(await h.run("change('team_patch',{id:'t',note:'blocked'},{note:''})"),false);
+ await h.submit('person',{name:'Injected',role:'Technician'});assert.equal(h.calls.length,0);
+ h.run('accessRole=null');assert.equal(await h.run("change('settings_patch',{}, {})"),false);assert.equal(h.calls.length,0);
+});
+
+
+
+test('viewer logout affects only this device and an access lookup failure stays closed',async()=>{
+ const h=harness();h.run("accessRole='viewer';supabase.auth.signOut=async options=>{globalThis.logoutScope=options.scope;return {}}");
+ await h.run("act('logout')");assert.equal(h.run('logoutScope'),'local');assert.equal(h.run('accessRole'),null);
+ const denied=harness();denied.run("accessRole='editor';supabase.rpc=async()=>({error:{message:'lookup failed'}})");
+ await denied.run("loadCloud(user)");assert.equal(denied.run('accessRole'),null);assert.equal(denied.run('ready'),false);
+ assert.equal(await denied.run("change('initialize',{}, {})"),false);assert.equal(denied.calls.length,0);
+});
+
 

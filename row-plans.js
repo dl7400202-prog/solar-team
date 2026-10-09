@@ -113,6 +113,8 @@ export function automaticPalletLayout(left, right) {
 
 export function createRowPlansFeature(api) {
   const {esc, btn} = api;
+  const writable=()=>api.canEdit?api.canEdit():true;
+  const editorActions=new Set(['plan-new','plan-edit','plan-type-edit','plan-import','plan-import-apply']);
   let field = '', query = '', teamContext = null, parent = {screen:'settings', id:null};
   let selectedRow = null, selectedType = null, currentScreen = 'rowPlans', tab = 'plan', mode = 'panels';
   let draft = null, editBase = null, typeBase = null, editDirty = false, importText = '', importPreview = null, typeParent='settings';
@@ -282,7 +284,7 @@ export function createRowPlansFeature(api) {
     if (form) draft=readDraft(new FormData(form));
   }
   function drawTypes() {
-    renderPage('Panel types','<p class="muted">Seven colour-coded types. Description + Current Class identifies the type used in each row.</p><div class="plan-type-list">'+types().map((t,i)=>'<button type="button" class="card plan-type-card" data-action="plan-type-edit" data-id="'+esc(t.id)+'"><span class="row"><strong>Type '+(i+1)+'</strong><span class="tag '+(t.configured?'good':'neutral')+'">'+(t.configured?'Ready':'Awaiting details')+'</span></span>'+typeBadge(t.id)+'<small>Edit colour, Description and Current Class</small></button>').join('')+'</div><p class="hint">Unconfigured types are unavailable for new selections. Existing source references are preserved for review.</p>');
+    renderPage('Panel types','<p class="muted">Seven colour-coded types. Description + Current Class identifies the type used in each row.</p><div class="plan-type-list">'+types().map((t,i)=>'<'+(writable()?'button type="button" data-action="plan-type-edit" data-id="'+esc(t.id)+'"':'section')+' class="card plan-type-card"><span class="row"><strong>Type '+(i+1)+'</strong><span class="tag '+(t.configured?'good':'neutral')+'">'+(t.configured?'Ready':'Awaiting details')+'</span></span>'+typeBadge(t.id)+'<small>'+(writable()?'Edit colour, Description and Current Class':'Description + Current Class')+'</small></'+(writable()?'button':'section')+'>').join('')+'</div><p class="hint">Unconfigured types are unavailable for new selections. Existing source references are preserved for review.</p>');
   }
   function drawTypeEdit() {
     const t=typeBase;
@@ -334,10 +336,12 @@ export function createRowPlansFeature(api) {
   }
   function render(screen) {
     currentScreen=screen;
+    if(!writable()&&['rowPlanEdit','panelTypeEdit','rowPlanImport'].includes(screen)){renderPage('Viewing only','<section class="card"><p>This account has read-only access.</p></section>');return;}
     ({rowPlans:drawList,rowPlan:drawPlan,rowPlanEdit:drawEdit,panelTypes:drawTypes,panelTypeEdit:drawTypeEdit,rowPlanImport:drawImport}[screen] || drawList)();
   }
   async function handleAction(action,id) {
     if (!action.startsWith('plan-')) return false;
+    if(!writable()&&(editorActions.has(action)||/^plan-(add|remove)-/.test(action))){api.feedback('This account has read-only access.');return true;}
     if (action==='plan-open') {teamContext=null;parent={screen:'settings',id:null};field='';query='';api.navigate('rowPlans');}
     else if (action==='plan-list') api.navigate('rowPlans');
     else if (action==='plan-row') {selectedRow=id;palletNeighborId=null;tab='plan';mode='panels';api.navigate('rowPlan');}
@@ -367,6 +371,7 @@ export function createRowPlansFeature(api) {
   }
   async function handleForm(kind,form) {
     if (!kind.startsWith('plan-')) return false;
+    if(!writable()&&kind!=='plan-filter'){api.feedback('This account has read-only access.');return true;}
     if (kind==='plan-filter') {field=String(form.get('field')||'');query=String(form.get('query')||'').trim();render('rowPlans');}
     else if (kind==='plan-save') {
       if(!draft){api.feedback('Open the row constructor again.');return true;}
