@@ -143,6 +143,40 @@ test('automatic pair count uses 36 per pallet with no carryover',async()=>{
   }
   assert.equal(pair(100,100).pallets.length,6);assert.equal(pair(100,100).pallets.length,6);
 });
+
+test('unequal pallet rows align their motors and shift the shorter north end south',async()=>{
+  const {createRowPlansFeature}=await load(),left=plan({motorAfterPanel:46}),right=plan({id:'right',rowNumber:902,panelCount:75,motorAfterPanel:21,panelGroups:[{quantity:75,positiveSide:'S',typeId:'yellow',sourceToken:''}]}),h=harness(createRowPlansFeature,[left,right]);
+  await h.feature.handleAction('plan-row',left.id);await h.feature.handleAction('plan-pallets');
+  const motors=[...h.state.html.matchAll(/<path d="M(?:41|253) ([\d.]+)H(?:107|319)" stroke="#ae3042"/g)].map(m=>Number(m[1]));
+  assert.equal(motors.length,2);assert.equal(motors[0],motors[1],'Both motor marks must lie on one horizontal line');
+  assert.equal(h.events.filter(e=>e.kind).length,0);
+});
+
+test('pallets use shifted row ordinals for destinations, types and positive direction',async()=>{
+  const {automaticPalletLayout}=await load(),left=plan({motorAfterPanel:46}),right=plan({id:'right',rowNumber:902,panelCount:75,motorAfterPanel:21,panelGroups:[{quantity:25,positiveSide:'N',typeId:'yellow',sourceToken:''},{quantity:25,positiveSide:'N',typeId:'yellow',sourceToken:''},{quantity:25,positiveSide:'S',typeId:'yellow',sourceToken:''}]}),before=JSON.stringify([left,right]),layout=automaticPalletLayout(left,right);
+  assert.equal(layout.alignment,'motor');assert.equal(layout.span,100);
+  assert.deepEqual(layout.rows.map(r=>r.offset),[0,25]);assert.deepEqual(layout.rows.map(r=>r.end),[1,1]);
+  assert.equal(layout.rows[0].motorPosition,layout.rows[1].motorPosition);
+  assert.deepEqual(layout.pallets.map(p=>p.position),[.175,.3875,.5625,.7375,.9125]);
+  assert.deepEqual(layout.pallets.map(p=>p.nearPanels.map(n=>n.panel)),[[18],[39,14],[57],[49],[92,67]]);
+  assert.deepEqual(layout.pallets.map(p=>p.forRows),[[901],[901,902],[901],[902],[901,902]]);
+  assert.deepEqual(layout.pallets.map(p=>p.labelSide),['left','left','right','left','right']);
+  const differentType=structuredClone(right);differentType.panelGroups[0].typeId='type-2';
+  const changed=automaticPalletLayout(left,differentType);assert.deepEqual(changed.pallets[1].forRows,[902]);assert.equal(changed.pallets[1].typeId,'type-2');
+  assert.equal(JSON.stringify([left,right]),before);
+});
+
+test('motor alignment works in either row order and unknown motors leave offsets unconfirmed',async()=>{
+  const {automaticPalletLayout}=await load(),left=plan({motorAfterPanel:46}),right=plan({id:'right',rowNumber:902,panelCount:75,motorAfterPanel:21});
+  const forward=automaticPalletLayout(left,right),reverse=automaticPalletLayout(right,left);
+  assert.deepEqual(reverse.rows.map(r=>r.offset),[25,0]);assert.deepEqual(reverse.pallets.map(p=>p.position),forward.pallets.map(p=>p.position));
+  const equalCounts=automaticPalletLayout(left,plan({id:'right',rowNumber:902,motorAfterPanel:71}));
+  assert.equal(equalCounts.span,125);assert.deepEqual(equalCounts.rows.map(r=>r.offset),[25,0]);assert.equal(equalCounts.rows[0].motorPosition,equalCounts.rows[1].motorPosition);
+  for(const motorAfterPanel of [null,undefined,76,-1,1.5]){
+    const unknown=automaticPalletLayout(left,{...right,motorAfterPanel});
+    assert.equal(unknown.alignment,'north');assert.deepEqual(unknown.rows.map(r=>r.offset),[0,0]);assert.equal(unknown.pallets.length,5);
+  }
+});
 test('automatic placement follows north to south and label left relative to plus',async()=>{
   const {automaticPalletLayout}=await load(),left=plan(),right=plan({id:'right',rowNumber:902}),before=JSON.stringify([left,right]),result=automaticPalletLayout(left,right);
   assert.equal(result.pallets.length,6);
