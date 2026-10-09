@@ -86,28 +86,49 @@ function panelGroupAt(plan, ordinal) {
 }
 
 export function automaticPalletLayout(left, right) {
-  const base = {capacity:PALLET_CAPACITY, totalPanels:null, pallets:[], error:''};
+  const base = {capacity:PALLET_CAPACITY, totalPanels:null, pallets:[], rows:[], span:0, alignment:'north', error:''};
   if (!left || !right) return {...base,error:'Choose the row on your right to calculate the pallet layout.'};
   if (left.field !== right.field || left.rowNumber === right.rowNumber) return {...base,error:'Choose two different rows in the same field.'};
   if ([left,right].some(row => !integer(row.panelCount) || row.panelCount > 10000)) return {...base,error:'Both rows need a known panel count before pallets can be placed automatically.'};
   const totalPanels = left.panelCount+right.panelCount;
   if (!totalPanels) return {...base,totalPanels:0};
-  const count = Math.ceil(totalPanels/PALLET_CAPACITY), shorter = Math.min(left.panelCount,right.panelCount), longest = Math.max(left.panelCount,right.panelCount);
+  const motorKnown = row => integer(row.motorAfterPanel) && row.motorAfterPanel >= 1 && row.motorAfterPanel <= row.panelCount;
+  const alignment = [left,right].every(motorKnown) ? 'motor' : 'north';
+  const motor = alignment==='motor' ? Math.max(left.motorAfterPanel,right.motorAfterPanel) : 0;
+  const geometry = [left,right].map(row => {
+    const start = alignment==='motor' ? motor-row.motorAfterPanel : 0;
+    return {row,start,end:start+row.panelCount};
+  });
+  const extent = Math.max(...geometry.map(row=>row.end));
+  const rows = geometry.map(({row,start,end}) => ({rowNumber:row.rowNumber,offset:start,start:start/extent,end:end/extent,
+    motorPosition:motorKnown(row)?(start+row.motorAfterPanel)/extent:null}));
+  const edges = [...new Set(geometry.flatMap(row=>[row.start,row.end]))].sort((a,b)=>a-b);
+  const segments = edges.slice(0,-1).map((start,i) => ({start,end:edges[i+1],rate:geometry.filter(row=>row.start<=start && row.end>=edges[i+1] && row.end>row.start).length}));
+  const count = Math.ceil(totalPanels/PALLET_CAPACITY);
   const pallets = Array.from({length:count},(_,index) => {
-    // Midpoints of equal work intervals, with two rows contributing until the shorter one ends.
-    const demand = (index+.5)*totalPanels/count;
-    const coordinate = demand <= shorter*2 ? demand/2 : demand-shorter;
-    const nearPanel = Math.ceil(coordinate);
-    const candidates = [left,right].filter(row => coordinate <= row.panelCount).map(row => ({row,group:panelGroupAt(row,nearPanel)}));
-    const shared = candidates.length===2 && candidates[0].group?.positiveSide===candidates[1].group?.positiveSide && (candidates[0].group?.typeId || left.panelTypeId)===(candidates[1].group?.typeId || right.panelTypeId);
+    // Equal work intervals along the shifted rows, counting only rows present at each position.
+    let demand = (index+.5)*totalPanels/count, coordinate = 0;
+    for (const segment of segments) {
+      const panels = (segment.end-segment.start)*segment.rate;
+      if (!panels) continue;
+      if (demand <= panels) {coordinate=segment.start+demand/segment.rate;break;}
+      demand -= panels;
+    }
+    const candidates = geometry.filter(row => coordinate>row.start && coordinate<=row.end).map(({row,start}) => {
+      const nearPanel = Math.ceil(coordinate-start);
+      return {row,nearPanel,group:panelGroupAt(row,nearPanel)};
+    });
+    const shared = candidates.length===2 && candidates[0].group?.positiveSide===candidates[1].group?.positiveSide && (candidates[0].group?.typeId || candidates[0].row.panelTypeId)===(candidates[1].group?.typeId || candidates[1].row.panelTypeId);
     const selected = shared ? candidates[0] : candidates[index%candidates.length];
     const positiveSide = ['N','S'].includes(selected.group?.positiveSide) ? selected.group.positiveSide : null;
-    return {number:index+1,panels:PALLET_CAPACITY,position:coordinate/longest,nearPanel,positiveSide,
+    const destinations = shared ? candidates : [selected];
+    return {number:index+1,panels:PALLET_CAPACITY,position:coordinate/extent,nearPanel:selected.nearPanel,positiveSide,
       labelSide:positiveSide==='N'?'left':positiveSide==='S'?'right':null,
       typeId:selected.group?.typeId || selected.row.panelTypeId,
-      forRows:shared?candidates.map(candidate=>candidate.row.rowNumber):[selected.row.rowNumber]};
+      forRows:destinations.map(candidate=>candidate.row.rowNumber),
+      nearPanels:destinations.map(candidate=>({rowNumber:candidate.row.rowNumber,panel:candidate.nearPanel}))};
   });
-  return {...base,totalPanels,pallets};
+  return {...base,totalPanels,pallets,rows,span:extent,alignment};
 }
 
 
@@ -217,39 +238,42 @@ export function createRowPlansFeature(api) {
     const neighbor = palletNeighbor(plan), layout = automaticPalletLayout(plan,neighbor);
     if (layout.error) return '<div class="plan-no-diagram"><strong>Automatic pallet layout is awaiting row information</strong><p>'+esc(layout.error)+'</p></div>';
     if (!layout.pallets.length) return '<div class="plan-no-diagram"><strong>No pallets needed</strong><p>Both rows have zero panels.</p></div>';
-    const total = Math.max(plan.panelCount,neighbor.panelCount), height = Math.max(680,layout.pallets.length*110+140), start = 65, length = height-145;
+    const total = layout.span, height = Math.max(680,layout.pallets.length*110+140), start = 65, length = height-145;
     let svg = svgStart('Automatic pallet placement between rows '+plan.rowNumber+' and '+neighbor.rowNumber,height);
-    const rowDrawing = (row,x) => {
+    const rowDrawing = (row,x,geometry) => {
+      const rowStart = start+geometry.start*length;
       const rowLength = row.panelCount/total*length;
-      let drawing = '<text x="'+(x+30)+'" y="25" text-anchor="middle" class="svg-title">Row '+esc(row.rowNumber)+'</text><text x="'+(x+30)+'" y="46" text-anchor="middle" class="svg-small">'+row.panelCount+' panels</text><rect x="'+x+'" y="'+start+'" width="60" height="'+rowLength+'" fill="url(#plan-panel-lines)"/>';
+      let drawing = '<text x="'+(x+30)+'" y="25" text-anchor="middle" class="svg-title">Row '+esc(row.rowNumber)+'</text><text x="'+(x+30)+'" y="46" text-anchor="middle" class="svg-small">'+row.panelCount+' panels</text><rect class="svg-pallet-row" data-row-number="'+esc(row.rowNumber)+'" x="'+x+'" y="'+rowStart+'" width="60" height="'+rowLength+'" fill="url(#plan-panel-lines)"/>';
       let ordinal = 0;
       for (const group of row.panelGroups) {
         const span = Math.min(group.quantity,Math.max(0,row.panelCount-ordinal));
         if (!span) break;
-        const y = start+ordinal/total*length, groupHeight = span/total*length;
+        const y = rowStart+ordinal/total*length, groupHeight = span/total*length;
         drawing += '<rect x="'+x+'" y="'+y+'" width="5" height="'+groupHeight+'" fill="'+colorValue(typeById(group.typeId)?.color)+'"/><text x="'+(x+30)+'" y="'+(y+groupHeight/2+4)+'" text-anchor="middle" class="svg-pallet-row-direction">'+(group.positiveSide==='N'?'↑ + N':group.positiveSide==='S'?'↓ + S':'? +')+'</text>';
         ordinal += span;
       }
-      if (row.motorAfterPanel !== null && row.motorAfterPanel!==undefined) {
-        const y = start+row.motorAfterPanel/total*length;
-        drawing += '<path d="M'+(x-3)+' '+y+'H'+(x+63)+'" stroke="#ae3042" stroke-width="3"/>';
+      if (geometry.motorPosition !== null) {
+        const y = start+geometry.motorPosition*length;
+        drawing += '<path d="M'+(x-3)+' '+y+'H'+(x+63)+'" stroke="#ae3042" class="svg-pallet-motor" data-row-number="'+esc(row.rowNumber)+'" stroke-width="3"/>';
       }
-      return drawing+'<text x="'+(x+30)+'" y="'+(start+rowLength+23)+'" text-anchor="middle" class="svg-small">Panel '+row.panelCount+'</text>';
+      return drawing+'<text x="'+(x+30)+'" y="'+(rowStart+rowLength+23)+'" text-anchor="middle" class="svg-small">Panel '+row.panelCount+'</text>';
     };
-    svg += rowDrawing(plan,44)+rowDrawing(neighbor,256);
+    svg += rowDrawing(plan,44,layout.rows[0])+rowDrawing(neighbor,256,layout.rows[1]);
     for (const pallet of layout.pallets) {
       const y = start+pallet.position*length, north = pallet.positiveSide==='N', south = pallet.positiveSide==='S', colour = colorValue(typeById(pallet.typeId)?.color);
       const labelX = north ? 145 : 204, labelY = north ? y-23 : y+4;
       svg += '<g class="svg-auto-pallet" data-label-side="'+esc(pallet.labelSide || 'unknown')+'" data-positive-side="'+esc(pallet.positiveSide || 'unknown')+'"><title>Pallet '+pallet.number+' · '+esc(pallet.forRows.join(' / '))+' · '+esc(direction(pallet.positiveSide))+' · '+(pallet.labelSide?'Label '+pallet.labelSide+' on screen':'Label direction not confirmed')+'</title><path d="M108 '+y+'H252" stroke="#9babb9" stroke-dasharray="3 4"/><rect x="141" y="'+(y-20)+'" width="78" height="43" rx="3" fill="#9a7548"/><rect x="145" y="'+(y-23)+'" width="70" height="37" rx="2" fill="#214969" stroke="#92abc0"/>';
       if (pallet.labelSide) svg += '<rect class="svg-pallet-label" x="'+labelX+'" y="'+labelY+'" width="11" height="10" fill="'+colour+'" stroke="#fff" stroke-width=".8"/>';
       
-      svg += '<text x="180" y="'+(y+2)+'" text-anchor="middle" class="svg-pallet-row-direction">'+pallet.number+'</text><text x="180" y="'+(y+38)+'" text-anchor="middle" class="svg-label">'+(north?'↑ + N':south?'↓ + S':'? Plus unknown')+'</text><text x="180" y="'+(y+53)+'" text-anchor="middle" class="svg-small">Near panel '+pallet.nearPanel+' · 36 panels</text>';
+      const panelLabel = pallet.nearPanels.length===2 && pallet.nearPanels[0].panel!==pallet.nearPanels[1].panel ? 'Panels '+pallet.nearPanels.map(p=>p.panel).join(' / ') : 'Near panel '+pallet.nearPanel;
+      svg += '<text x="180" y="'+(y+2)+'" text-anchor="middle" class="svg-pallet-row-direction">'+pallet.number+'</text><text x="180" y="'+(y+38)+'" text-anchor="middle" class="svg-label">'+(north?'↑ + N':south?'↓ + S':'? Plus unknown')+'</text><text x="180" y="'+(y+53)+'" text-anchor="middle" class="svg-small">'+panelLabel+' · 36 panels</text>';
       if (pallet.forRows.length===1) svg += '<text x="180" y="'+(y+68)+'" text-anchor="middle" class="svg-small">For row '+esc(pallet.forRows[0])+'</text>';
       svg += '</g>';
     }
     svg += '<text x="74" y="'+(height-20)+'" text-anchor="middle" class="svg-title">Left</text><text x="286" y="'+(height-20)+'" text-anchor="middle" class="svg-title">Right</text></svg>';
     const uncertain = layout.pallets.some(pallet=>!pallet.labelSide) ? '<p class="plan-notice">Some positive directions are not confirmed. Their label side is shown as unknown.</p>' : '';
-    return svg+'<p class="plan-pallet-label-key"><span class="plan-pallet-key-label" aria-hidden="true"></span>Label: left when facing the positive connector.</p><p class="hint">+ North → label on the left. + South → label on the right. Pallet colour follows the panel type.</p>'+uncertain;
+    const alignmentNote = layout.alignment==='motor' ? 'Rows align at their motors. Paired panel numbers are left / right, counted from each row\'s north end.' : 'Motor positions are not confirmed for both rows. North ends are shown together; the row offset is unconfirmed.';
+    return svg+'<p class="hint">'+alignmentNote+'</p><p class="plan-pallet-label-key"><span class="plan-pallet-key-label" aria-hidden="true"></span>Label: left when facing the positive connector.</p><p class="hint">+ North → label on the left. + South → label on the right. Pallet colour follows the panel type.</p>'+uncertain;
   }
   function palletDiagram(plan) {
     return palletPairControls(plan)+automaticPalletSummary(plan)+automaticPalletDiagram(plan);
@@ -325,7 +349,7 @@ export function createRowPlansFeature(api) {
       } else if (currentScreen==='rowPlan') render('rowPlan');
       return true;
     }
-    if (currentScreen!=='rowPlanEdit' || !draft || !/^(field|rowNumber|panelCount|panelTypeId|groupQuantity_\d+|groupSide_\d+|groupType_\d+)$/.test(el.name || '')) return false;
+    if (currentScreen!=='rowPlanEdit' || !draft || !/^(field|rowNumber|panelCount|panelTypeId|motorAfterPanel|groupQuantity_\d+|groupSide_\d+|groupType_\d+)$/.test(el.name || '')) return false;
     const form=el.closest?.('form[data-form="plan-save"]');
     if (!form) return false;
     draft=readDraft(new FormData(form));editDirty=true;api.markDirty();
