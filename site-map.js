@@ -79,12 +79,22 @@ export function createSiteMap(api) {
     if(!root||!svg||!view||!origin)return;
     svg.setAttribute('viewBox',[view.x,view.y,view.width,view.height].join(' '));svg.setAttribute('preserveAspectRatio','none');
     const rows=filtered(),selection=geometry().find(r=>r.rowNumber===selected&&(!filter||r.field===filter));
+    const units=view.width/(svg.clientWidth||350),labels=[];
     let drawing='<defs><pattern id="site-map-grid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="#d3e4d9" stroke-width=".7" vector-effect="non-scaling-stroke"/></pattern></defs><rect x="'+view.x+'" y="'+view.y+'" width="'+view.width+'" height="'+view.height+'" fill="url(#site-map-grid)"/>';
     for(const row of rows){const n=xy(row.north),s=xy(row.south),chosen=row.rowNumber===selected,p=planFor(row);const inView=n[0]>=view.x-10&&n[0]<=view.x+view.width+10&&s[1]>=view.y-10&&n[1]<=view.y+view.height+10;if(!inView)continue;
       drawing+='<g class="site-map-row" data-row-number="'+row.rowNumber+'"><title>Row '+row.rowNumber+' · '+esc(row.field)+'</title><path d="M'+n.join(' ')+'L'+s.join(' ')+'" stroke="'+(chosen?'#00875b':'#183b5c')+'" stroke-width="'+(chosen?5:2)+'" vector-effect="non-scaling-stroke"/>';
       if(view.width<180)for(let i=0;i<(row.groups||[]).length;i++){const group=row.groups[i],gn=xy(group.north),gs=xy(group.south),type=(db().panelTypes||[]).find(t=>t.id===p?.panelGroups?.[i]?.typeId),colour=/^#[a-f0-9]{6}$/i.test(type?.color||'')?type.color:'#c5ced7';drawing+='<path d="M'+gn.join(' ')+'L'+gs.join(' ')+'" stroke="'+colour+'" stroke-width="2" vector-effect="non-scaling-stroke"/>'}
-      if(view.width<300||chosen){const font=Math.max(1,view.width/(svg.clientWidth||350)*12);drawing+='<text x="'+n[0]+'" y="'+(chosen?Math.max(n[1]-font,view.y+font*1.3):n[1]-font)+'" text-anchor="middle" font-size="'+font+'" fill="#152840">'+row.rowNumber+'</text>';if(row.drive&&point(row.drive.point)){const d=xy(row.drive.point);drawing+='<circle class="site-map-drive" cx="'+d[0]+'" cy="'+d[1]+'" r="'+font*.35+'" fill="#ae3042"><title>Drive gap after panel '+row.drive.after+'</title></circle>'}}
+      if(view.width<300||chosen){labels.push({rowNumber:row.rowNumber,n,chosen});if(row.drive&&point(row.drive.point)){const d=xy(row.drive.point);drawing+='<circle class="site-map-drive" cx="'+d[0]+'" cy="'+d[1]+'" r="'+units*4.2+'" fill="#ae3042"><title>Drive gap after panel '+row.drive.after+'</title></circle>'}}
       drawing+='</g>';
+    }
+    const surface=svg.getBoundingClientRect(),overlaps=(a,b)=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top,occupied=[...root.querySelectorAll('.site-map-north,.site-map-zoom,.site-map-scale')].map(node=>{const r=node.getBoundingClientRect();return {left:r.left-surface.left-4,right:r.right-surface.left+4,top:r.top-surface.top-4,bottom:r.bottom-surface.top+4};});
+    labels.sort((a,b)=>Number(b.chosen)-Number(a.chosen));
+    for(const label of labels){const font=label.chosen?13:12,width=font*(String(label.rowNumber).length*.75+.6),half=width/2;let x=(label.n[0]-view.x)/units,y=(label.n[1]-view.y)/units-font;
+      if(label.chosen){x=Math.max(half+4,Math.min(surface.width-half-4,x));y=Math.max(font*1.2+4,Math.min(surface.height-font*.3-4,y));}
+      let box={left:x-half,right:x+half,top:y-font*1.2,bottom:y+font*.3};
+      if(label.chosen)for(const obstacle of occupied)if(overlaps(box,obstacle)){y=obstacle.bottom+font*1.2+4;box={...box,top:y-font*1.2,bottom:y+font*.3};}
+      if(box.left<4||box.right>surface.width-4||box.top<4||box.bottom>surface.height-4||occupied.some(other=>overlaps(box,other)))continue;
+      occupied.push(box);drawing+='<text data-row-label="'+label.rowNumber+'" x="'+(view.x+x*units)+'" y="'+(view.y+y*units)+'" text-anchor="middle" font-size="'+font*units+'" font-weight="'+(label.chosen?700:400)+'" fill="'+(label.chosen?'#006b49':'#152840')+'">'+label.rowNumber+'</text>';
     }
     drawing+='<g class="site-map-user"></g>';svg.innerHTML=drawing;
     const scale=root.querySelector('.site-map-scale'),target=view.width/4,power=10**Math.floor(Math.log10(target)),unit=target/power>=5?5:target/power>=2?2:1,metres=unit*power;scale.style.width=Math.max(1,metres/view.width*(svg.clientWidth||350))+'px';scale.textContent=metres>=1000?metres/1000+' km':metres+' m';
