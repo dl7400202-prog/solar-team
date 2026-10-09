@@ -1,4 +1,5 @@
 :root{--green:#00875b;--green-dark:#006d49;--blue:#0864c5;--ink:#152840;--muted:#596a7e;--line:#dce5eb;--bg:#f4f7fa;--card:#fff;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg);font-synthesis:none}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 *{box-sizing:border-box}
 body{margin:0}
 button,input,select,textarea{font:inherit}
@@ -221,3 +222,12 @@ form{max-width:780px;margin:auto}
 
 
 .common-leader h2{margin:12px 0 6px}.common-leader{border-left:4px solid #0864c5}.team-leader-line{font-size:13px;color:#0864c5;margin:8px 0}
+
+/* Field screens keep work controls close to the thumb and details readable. */
+#app:has(.plans-feature){padding-top:18px}
+#app:has(.plans-feature) .top{margin-bottom:12px}
+#app:has(.plans-feature) h1{font-size:27px;margin-bottom:12px}
+.bottom{background:#fff;box-shadow:0 -4px 18px #16324b0b}
+.bottom button{gap:5px}
+.viewer-mode{font-size:12px;padding:7px 10px;margin-bottom:12px}
+@media(min-width:900px){#app:has(.plans-feature){padding-top:28px}}

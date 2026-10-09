@@ -34,6 +34,28 @@ function editForm(p) {
   p.pallets.forEach((p,i)=>{put('palletPanels_'+i,p.panels);put('palletAfter_'+i,p.afterPanel);put('palletRow_'+i,p.adjacentRow)});
   return f;
 }
+
+test('Rows hub limits the initial list, expands it and prioritizes an exact row number',async()=>{
+  const {createRowPlansFeature}=await load();
+  const rows=Array.from({length:75},(_,i)=>plan({id:'North-'+(100+i),field:'North',rowNumber:100+i}));
+  rows.push(plan({id:'South-10',rowNumber:10}));
+  const h=harness(createRowPlansFeature,rows),count=()=>(h.state.html.match(/class="card plan-row-card"/g)||[]).length;
+  await h.feature.handleAction('plan-hub');assert.equal(count(),60);assert.equal(h.feature.navDestination('rowPlans'),'rows');assert.deepEqual(h.feature.back('rowPlans'),{screen:'today',id:null});
+  await h.feature.handleAction('plan-more');assert.equal(count(),76);
+  const search=new FormData();search.set('query','10');await h.feature.handleForm('plan-filter',search);
+  assert.ok(h.state.html.indexOf('data-id="South-10"')<h.state.html.indexOf('data-id="North-100"'));
+  await h.feature.handleAction('plan-reset');assert.equal(count(),60);assert.equal(h.events.filter(e=>e.kind).length,0);
+});
+
+test('row schemes open directly and preserve the paired pallet calculation',async()=>{
+  const {createRowPlansFeature}=await load();
+  const h=harness(createRowPlansFeature,[plan({motorAfterPanel:46}),plan({id:'South-902',rowNumber:902,panelCount:75,motorAfterPanel:21,panelGroups:plan().panelGroups.slice(0,3)})]);
+  await h.feature.handleAction('plan-row','South-901');
+  await h.feature.handleAction('plan-section','dampers');assert.match(h.state.html,/Post numbers from north/);
+  await h.feature.handleAction('plan-section','pallets');assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,5);
+  await h.feature.handleAction('plan-section','instructions');assert.match(h.state.html,/Panel sequence/);assert.match(h.state.html,/Damper positions/);
+  assert.equal(h.events.filter(e=>e.kind).length,0);
+});
 test('known instructions validate group totals, post-side uniqueness and motor bounds',async()=>{
   const {validateRowPlan}=await load();
   assert.equal(validateRowPlan(plan(),['South'],panelTypes),'');
