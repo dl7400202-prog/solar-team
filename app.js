@@ -1,8 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.0';
 
 const supabase = createClient('https://oimiygdkrnsjzlivwafs.supabase.co','sb_publishable_WKPV0lAUCl1Lr53UujCR3g_zlQay4DS');
-import {createRowPlansFeature} from './row-plans.js?v=site-map-20261009-2';
-import {createSiteMap} from './site-map.js?v=site-map-20261009-2';
+import {createRowPlansFeature} from './row-plans.js?v=google-map-20261009-1';
+import {createSiteMap} from './site-map.js?v=google-map-20261009-1';
+import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=google-map-20261009-1';
+import {googleMapsConfig} from './google-maps-config.js?v=google-map-20261009-1';
+let googleMapsLoader=null;
 const defaultJobGroups=['Team Leads','Technicians','Mechanics'];
 const seed = {people:[],fields:['North','South'],workTypes:['Solar panel installation','Bolt tightening','Bracket preparation','Truck unloading'],workUnits:{'Truck unloading':'loads'},jobGroups:defaultJobGroups,archivedJobGroups:[],teams:[],assignmentHistory:[],rowPlans:[],rowPlanHistory:[],panelTypes:[],defaultTeamLeaderId:null};
 const weatherSite={name:'P223_Nagbøl',place:'Solar Park Nagbøl',address:'Nagbølvej 83A, 6640 Lunderskov'};
@@ -53,7 +56,7 @@ function birthdaysToday(date=new Date()){const key=String(date.getMonth()+1).pad
 function birthdayBanner(){const people=birthdaysToday();if(!people.length)return '';return '<section class="birthday-banner" role="status"><span class="birthday-icon">'+weatherIcon('birthday')+'</span><div><strong>Birthday today</strong><p>'+people.map(p=>esc(p.name)).join(' · ')+'</p></div></section>'}
 function acceptRow(row){db=normalise(row.data);version=row.version;ready=true;syncText='Shared data · Up to date'}
 
-const rowPlansFeature=createRowPlansFeature({getDb:()=>db,draw,header,btn,esc,change,feedback,toast,navigate,markDirty:()=>{dirty=true},confirm:message=>window.confirm(message),newId:()=>crypto.randomUUID(),canEdit,createMap:callbacks=>createSiteMap({...callbacks,getDb:()=>db,esc})});
+const rowPlansFeature=createRowPlansFeature({getDb:()=>db,draw,header,btn,esc,change,feedback,toast,navigate,markDirty:()=>{dirty=true},confirm:message=>window.confirm(message),newId:()=>crypto.randomUUID(),canEdit,createMap:callbacks=>createSiteMap({...callbacks,getDb:()=>db,esc,createSatellite:options=>createGoogleSatelliteMap({...options,loader:googleMapsLoader||(googleMapsLoader=createGoogleMapsLoader({key:googleMapsConfig.apiKey}))})})});
 function teamLeader(t){const id=t?.leaderId||(!t?.closed?db.defaultTeamLeaderId:null);return id?{id,name:t?.leaderName||person(id)?.name||'Former employee'}:null}
 function crewIds(t){const lead=teamLeader(t);return (t.members||[]).filter(id=>id!==lead?.id)}
 function leaderCard(t){const lead=teamLeader(t);return lead?'<section class="card common-leader"><span class="tag blue">'+(t?.closed?'Recorded team leader':'Automatic team leader')+'</span><h2>'+esc(lead.name)+'</h2><p class="hint">Responsible for every team and work type.</p></section>':''}
