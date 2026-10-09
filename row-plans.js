@@ -140,6 +140,13 @@ export function createRowPlansFeature(api) {
   let selectedRow = null, selectedType = null, currentScreen = 'rowPlans', tab = 'plan', mode = 'panels';
   let draft = null, editBase = null, typeBase = null, editDirty = false, importText = '', importPreview = null, typeParent='settings';
   let palletNeighborId = null;
+  let listMode='list',siteMap=null;
+  let geometryRows=null,geometryIndex=new Map();
+  const mapRecord = plan => {const rows=database().siteMap?.rows;if(rows!==geometryRows){geometryRows=rows;geometryIndex=new Map((Array.isArray(rows)?rows:[]).map(r=>[r.field+'\0'+r.rowNumber,r]));}return geometryIndex.get(plan.field+'\0'+plan.rowNumber);};
+  function mapFeature(){
+    if(!siteMap&&api.createMap)siteMap=api.createMap({openRow:(id,pallets=false)=>{selectedRow=id;palletNeighborId=null;tab=pallets?'diagram':'plan';mode=pallets?'pallets':'panels';api.navigate('rowPlan');}});
+    return siteMap;
+  }
   const database = () => api.getDb();
   const plans = () => database().rowPlans || [];
   const types = () => database().panelTypes || [];
@@ -165,24 +172,27 @@ export function createRowPlansFeature(api) {
     return '<details class="plan-source"><summary>Source & review notes</summary><dl><dt>Panel source</dt><dd>'+esc(plan.source?.panels || 'Not supplied')+'</dd><dt>Damper source</dt><dd>'+esc(plan.source?.dampers || 'Not supplied')+'</dd></dl>'+(plan.notes?'<p>'+esc(plan.notes)+'</p>':'')+'<small>Plan revision '+esc(plan.revision)+'</small></details>';
   }
   function listRows() {
-    const rows = plans().filter(p => (!field || p.field === field) && (!query || String(p.rowNumber).includes(query) || (p.rowType || '').toLowerCase().includes(query.toLowerCase()))).sort((a,b) => a.field.localeCompare(b.field) || a.rowNumber-b.rowNumber);
+    const rows = plans().filter(p => (!field || p.field === field) && (!query || String(p.rowNumber).includes(query) || (p.rowType || '').toLowerCase().includes(query.toLowerCase()) || mapFeature()?.matches(mapRecord(p)||{},query))).sort((a,b) => a.field.localeCompare(b.field) || a.rowNumber-b.rowNumber);
     return rows.length ? '<div class="plan-list">'+rows.map(p => '<button type="button" class="card plan-row-card" data-action="plan-row" data-id="'+esc(p.id)+'"><span class="row"><strong>Row '+esc(p.rowNumber)+'</strong>'+status(p)+'</span><small>'+esc(p.field)+(p.rowType?' · Type '+esc(p.rowType):'')+'</small>'+typeBadge(p.panelTypeId)+'<span class="plan-row-counts"><span>Panels<br><strong>'+esc(knownText(p.panelsKnown, p.panelCount, 'panels'))+'</strong></span><span>Dampers<br><strong>'+esc(knownText(p.dampersKnown, p.damperCount, 'dampers'))+'</strong></span></span></button>').join('')+'</div>' : '<section class="empty"><h2>No row plans found</h2><p>Choose another field or create the row’s installation instructions.</p></section>';
   }
   function drawList() {
     if (field && !fields().includes(field)) field = '';
     const context = teamContext ? '<section class="card plan-context"><strong>Team '+esc(teamContext.number)+' · '+esc(teamContext.field)+'</strong><small>'+esc(teamContext.work)+' · '+(present(teamContext.from)?'Start row '+esc(teamContext.from):'No start row')+'</small><p class="hint">Installation instructions are shared by field and row. Record completed work from the team screen.</p></section>' : '<p class="muted">Shared installation instructions for every field and row.</p>';
-    renderPage('Row installation plans', context+'<form data-form="plan-filter" class="card plan-filters"><div class="grid2"><label>Field<select name="field">'+option('', 'All fields', field)+selectOptions(fields(), field)+'</select></label><label>Find row or type<input name="query" value="'+esc(query)+'" maxlength="60" placeholder="For example 901" inputmode="search"></label></div><button type="submit" class="secondary">Find rows</button></form><div class="plan-toolbar">'+btn('Add row plan', 'plan-new', 'compact primary')+btn('Panel types', 'plan-types', 'compact')+btn('Import plans', 'plan-import', 'compact')+'</div><div id="plan-results">'+listRows()+'</div>');
+    const views='<div class="plan-tabs" role="group" aria-label="Rows view">'+['list','map'].map(v=>'<button type="button" data-action="plan-list-mode" data-id="'+v+'" class="'+(listMode===v?'active':'')+'" aria-pressed="'+(listMode===v)+'">'+(v==='list'?'List':'Map')+'</button>').join('')+'</div>';
+    renderPage('Row installation plans', context+'<form data-form="plan-filter" class="card plan-filters"><div class="grid2"><label>Field<select name="field">'+option('', 'All fields', field)+selectOptions(fields(), field)+'</select></label><label>Find row, type or post ID<input name="query" value="'+esc(query)+'" maxlength="60" placeholder="Row, pile plan row or post ID" inputmode="search"></label></div><button type="submit" class="secondary">Find rows</button></form><div class="plan-toolbar">'+btn('Add row plan', 'plan-new', 'compact primary')+btn('Panel types', 'plan-types', 'compact')+btn('Import plans', 'plan-import', 'compact')+'</div>'+views+'<div id="plan-results">'+(listMode==='map'?(mapFeature()?.html(field,query)||'<section class="empty">Map is unavailable.</section>'):listRows())+'</div>');
+    if(listMode==='map'&&typeof document!=='undefined')mapFeature()?.mount(document.querySelector('.site-map'));
   }
   function drawPlan() {
     const plan = planById(selectedRow);
     if (!plan) { renderPage('Row plan', '<section class="empty"><h2>Row plan is unavailable</h2>'+btn('View row plans', 'plan-list')+'</section>'); return; }
     const tabs = '<div class="plan-tabs" role="group" aria-label="Plan view">'+['plan','diagram'].map(v => '<button type="button" class="'+(tab===v?'active':'')+'" data-action="plan-tab" data-id="'+v+'" aria-pressed="'+(tab===v)+'">'+(v==='plan'?'Plan':'Diagram')+'</button>').join('')+'</div>';
-    renderPage('Row '+plan.rowNumber, '<section class="card plan-overview"><div class="row"><p class="eyebrow">'+esc(plan.field)+(plan.rowType?' · Row type '+esc(plan.rowType):'')+'</p>'+status(plan)+'</div>'+typeBadge(plan.panelTypeId)+'<div class="plan-summary"><span><small>Panels</small><strong>'+esc(knownText(plan.panelsKnown, plan.panelCount, 'panels'))+'</strong></span><span><small>Dampers</small><strong>'+esc(knownText(plan.dampersKnown, plan.damperCount, 'dampers'))+'</strong></span></div>'+btn('Edit installation plan', 'plan-edit', 'secondary', plan.id)+btn('Pallet placement', 'plan-pallets', 'secondary')+'</section>'+tabs+(tab==='diagram'?diagram(plan):planDetails(plan))+sourceDetails(plan));
+    renderPage('Row '+plan.rowNumber, '<section class="card plan-overview"><div class="row"><p class="eyebrow">'+esc(plan.field)+(plan.rowType?' · Row type '+esc(plan.rowType):'')+'</p>'+status(plan)+'</div>'+typeBadge(plan.panelTypeId)+'<div class="plan-summary"><span><small>Panels</small><strong>'+esc(knownText(plan.panelsKnown, plan.panelCount, 'panels'))+'</strong></span><span><small>Dampers</small><strong>'+esc(knownText(plan.dampersKnown, plan.damperCount, 'dampers'))+'</strong></span></div>'+btn('Edit installation plan', 'plan-edit', 'secondary', plan.id)+btn('Pallet placement', 'plan-pallets', 'secondary')+(mapRecord(plan)?btn('Show on map','plan-show-map','secondary',plan.id):'')+'</section>'+tabs+(tab==='diagram'?diagram(plan):planDetails(plan))+sourceDetails(plan));
   }
   function planDetails(plan) {
+    const geometry=mapRecord(plan);
     let ordinal = 1;
-    const groups = plan.panelGroups.map((group,index) => {const first=ordinal;ordinal+=group.quantity;return '<li><div class="row"><strong>Group '+(index+1)+' · Panels '+first+'–'+(ordinal-1)+'</strong><span class="plan-direction '+(group.positiveSide?'':'warning-text')+'">'+direction(group.positiveSide)+'</span></div><small>'+group.quantity+' panels · Ordered north to south</small>'+typeBadge(group.typeId)+(group.sourceToken?'<small>Original marking: '+esc(group.sourceToken)+'</small>':'')+'</li>'}).join('');
-    const dampers = [...plan.dampers].sort((a,b) => a.post-b.post || a.side.localeCompare(b.side)).map(d => '<li class="row"><strong>Post '+esc(d.post)+'</strong><span>'+ (d.side==='E'?'East →':'← West')+'</span></li>').join('');
+    const groups = plan.panelGroups.map((group,index) => {const first=ordinal;ordinal+=group.quantity;const sourceGroup=geometry?.groups?.find(g=>g.first===first&&g.last===ordinal-1);return '<li><div class="row"><strong>Group '+(index+1)+' · Panels '+first+'–'+(ordinal-1)+'</strong><span class="plan-direction '+(group.positiveSide?'':'warning-text')+'">'+direction(group.positiveSide)+'</span></div><small>'+group.quantity+' panels · Ordered north to south</small>'+(sourceGroup?'<small>String ID '+esc(sourceGroup.id)+'</small>'+(sourceGroup.crossesDrive?'<small class="plan-direction warning-text">Crosses the drive gap · 21 north + 4 south</small>':''):'')+typeBadge(group.typeId)+(group.sourceToken?'<small>Original marking: '+esc(group.sourceToken)+'</small>':'')+'</li>'}).join('');
+    const dampers = [...plan.dampers].sort((a,b) => a.post-b.post || a.side.localeCompare(b.side)).map(d => {const post=geometry?.posts?.find(p=>p.post===d.post&&p.side===d.side);return '<li class="row"><span><strong>Post '+esc(d.post)+'</strong>'+(post?'<small>Pile ID '+esc(post.id)+'</small>':'')+'</span><span>'+ (d.side==='E'?'East →':'← West')+'</span></li>'}).join('');
     return '<section class="card"><h2>Panel sequence · North → South</h2>'+(!plan.panelsKnown?'<p class="plan-notice">Panel instructions are incomplete. Confirm the source before installation.</p>':'')+(groups?'<ol class="plan-detail-list">'+groups+'</ol>':'<p class="muted">Panel group information has not been supplied.</p>')+'</section><section class="card"><h2>Damper positions</h2><p class="hint">Post numbers start at the north end. Panel numbers and post numbers are separate.</p>'+(!plan.dampersKnown?'<p class="plan-notice">Damper instructions have not been confirmed.</p>':'')+(dampers?'<ul class="plan-detail-list">'+dampers+'</ul>':'<p class="muted">'+(plan.dampersKnown?'No dampers required.':'No damper positions supplied.')+'</p>')+'</section><section class="card"><h2>Additional instructions</h2><dl class="plan-facts"><dt>Slope</dt><dd>'+ (plan.slope===null?'Not supplied':esc(plan.slope)+'°')+'</dd><dt>Lower bearing side</dt><dd>'+esc(plan.lowerBearingSide || 'Not supplied')+'</dd><dt>Motor</dt><dd>'+ (plan.motorAfterPanel===null?'Position not supplied':'After panel '+esc(plan.motorAfterPanel))+'</dd></dl></section>'+palletDetails(plan);
   }
   function palletNeighbor(plan) {
@@ -360,6 +370,7 @@ export function createRowPlansFeature(api) {
   }
   function render(screen) {
     currentScreen=screen;
+    if(screen!=='rowPlans'||listMode!=='map')siteMap?.hide();
     if(!writable()&&['rowPlanEdit','panelTypeEdit','rowPlanImport'].includes(screen)){renderPage('Viewing only','<section class="card"><p>This account has read-only access.</p></section>');return;}
     ({rowPlans:drawList,rowPlan:drawPlan,rowPlanEdit:drawEdit,panelTypes:drawTypes,panelTypeEdit:drawTypeEdit,rowPlanImport:drawImport}[screen] || drawList)();
   }
@@ -367,6 +378,8 @@ export function createRowPlansFeature(api) {
     if (!action.startsWith('plan-')) return false;
     if(!writable()&&(editorActions.has(action)||/^plan-(add|remove)-/.test(action))){api.feedback('This account has read-only access.');return true;}
     if (action==='plan-open') {teamContext=null;parent={screen:'settings',id:null};field='';query='';api.navigate('rowPlans');}
+    else if (action==='plan-list-mode') {if(['list','map'].includes(id))listMode=id;render('rowPlans');}
+    else if (action==='plan-show-map') {const plan=planById(id);if(plan){field=plan.field;query='';listMode='map';mapFeature()?.selectRow(mapRecord(plan));api.navigate('rowPlans');}}
     else if (action==='plan-list') api.navigate('rowPlans');
     else if (action==='plan-row') {selectedRow=id;palletNeighborId=null;tab='plan';mode='panels';api.navigate('rowPlan');}
     else if (action==='plan-new') startEdit(null);
@@ -420,6 +433,7 @@ export function createRowPlansFeature(api) {
   }
   return {
     hasScreen:screen=>ROUTES.has(screen),render,handleAction,handleForm,handleInput,
+    suspendIfHidden(screen){if(screen!=='rowPlans'||listMode!=='map')siteMap?.hide();},
     reload(screen) {
       if(screen==='rowPlanEdit') {
         const latest=planById(editBase?.id || draft?.id || selectedRow);

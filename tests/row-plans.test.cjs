@@ -4,6 +4,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const moduleUrl = 'data:text/javascript;base64,'+Buffer.from(fs.readFileSync(path.join(__dirname,'../row-plans.js'),'utf8')).toString('base64');
 const load = () => import(moduleUrl);
+
+test('map navigation exposes source IDs while leaving plans and viewer data unchanged',async()=>{
+  const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature);let callbacks,selected,hides=0;
+  h.db.siteMap={rows:[{rowNumber:901,field:'South',pilePlanRow:12,motor:{post:8,id:5008},posts:[{post:2,id:5002,side:'E'}],groups:[{first:1,last:25,id:'STRING-A',crossesDrive:false}]}]};
+  h.api.createMap=api=>{callbacks=api;return {matches:(row,q)=>String(row.motor?.id)===q,html:()=>'<section class="site-map">Source map</section>',selectRow:row=>selected=row,hide:()=>hides++}};
+  await h.feature.handleAction('plan-row','South-901');assert.match(h.state.html,/Pile ID 5002/);assert.match(h.state.html,/String ID STRING-A/);assert.doesNotMatch(h.state.html,/Inverter/);
+  await h.feature.handleAction('plan-show-map','South-901');assert.match(h.state.html,/Source map/);assert.equal(selected.rowNumber,901);
+  callbacks.openRow('South-901',true);assert.match(h.state.html,/Automatic pallet layout/);assert.ok(hides>0);
+  h.feature.suspendIfHidden(null);assert.ok(hides>1);assert.equal(h.events.filter(e=>e.kind).length,0);
+});
 const yellow={id:'yellow',name:'Yellow',color:'#f3cf35',description:'LR8-66HYD-650M',currentClass:'H',configured:true};
 const panelTypes=[yellow,...Array.from({length:6},(_,i)=>({id:'type-'+(i+2),name:'Type '+(i+2),color:null,description:'',currentClass:'',configured:false}))];
 const plan = (overrides={}) => ({id:'South-901',field:'South',rowNumber:901,rowType:'A',panelTypeId:'yellow',panelCount:100,panelsKnown:true,panelGroups:[{quantity:25,positiveSide:'N',typeId:'yellow',sourceToken:'650H'},{quantity:25,positiveSide:'N',typeId:'yellow',sourceToken:'650H'},{quantity:25,positiveSide:'S',typeId:'yellow',sourceToken:'650H'},{quantity:25,positiveSide:'S',typeId:'yellow',sourceToken:'650H'}],dampersKnown:true,damperCount:4,dampers:[{post:2,side:'E'},{post:4,side:'W'},{post:12,side:'E'},{post:13,side:'W'}],slope:0.01,lowerBearingSide:null,motorAfterPanel:null,pallets:[],status:'verified',notes:'',source:{panels:'Photo 1',dampers:'Photo 2'},revision:3,...overrides});

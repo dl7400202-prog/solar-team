@@ -1,7 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.0';
 
 const supabase = createClient('https://oimiygdkrnsjzlivwafs.supabase.co','sb_publishable_WKPV0lAUCl1Lr53UujCR3g_zlQay4DS');
-import {createRowPlansFeature} from './row-plans.js?v=motor-align-20261009-1';
+import {createRowPlansFeature} from './row-plans.js?v=site-map-20261009-1';
+import {createSiteMap} from './site-map.js?v=site-map-20261009-1';
 const defaultJobGroups=['Team Leads','Technicians','Mechanics'];
 const seed = {people:[],fields:['North','South'],workTypes:['Solar panel installation','Bolt tightening','Bracket preparation','Truck unloading'],workUnits:{'Truck unloading':'loads'},jobGroups:defaultJobGroups,archivedJobGroups:[],teams:[],assignmentHistory:[],rowPlans:[],rowPlanHistory:[],panelTypes:[],defaultTeamLeaderId:null};
 const weatherSite={name:'P223_Nagbøl',place:'Solar Park Nagbøl',address:'Nagbølvej 83A, 6640 Lunderskov'};
@@ -52,7 +53,7 @@ function birthdaysToday(date=new Date()){const key=String(date.getMonth()+1).pad
 function birthdayBanner(){const people=birthdaysToday();if(!people.length)return '';return '<section class="birthday-banner" role="status"><span class="birthday-icon">'+weatherIcon('birthday')+'</span><div><strong>Birthday today</strong><p>'+people.map(p=>esc(p.name)).join(' · ')+'</p></div></section>'}
 function acceptRow(row){db=normalise(row.data);version=row.version;ready=true;syncText='Shared data · Up to date'}
 
-const rowPlansFeature=createRowPlansFeature({getDb:()=>db,draw,header,btn,esc,change,feedback,toast,navigate,markDirty:()=>{dirty=true},confirm:message=>window.confirm(message),newId:()=>crypto.randomUUID(),canEdit});
+const rowPlansFeature=createRowPlansFeature({getDb:()=>db,draw,header,btn,esc,change,feedback,toast,navigate,markDirty:()=>{dirty=true},confirm:message=>window.confirm(message),newId:()=>crypto.randomUUID(),canEdit,createMap:callbacks=>createSiteMap({...callbacks,getDb:()=>db,esc})});
 function teamLeader(t){const id=t?.leaderId||(!t?.closed?db.defaultTeamLeaderId:null);return id?{id,name:t?.leaderName||person(id)?.name||'Former employee'}:null}
 function crewIds(t){const lead=teamLeader(t);return (t.members||[]).filter(id=>id!==lead?.id)}
 function leaderCard(t){const lead=teamLeader(t);return lead?'<section class="card common-leader"><span class="tag blue">'+(t?.closed?'Recorded team leader':'Automatic team leader')+'</span><h2>'+esc(lead.name)+'</h2><p class="hint">Responsible for every team and work type.</p></section>':''}
@@ -74,7 +75,7 @@ function icon(k){return '<svg viewBox="0 0 24 24" width="24" height="24" fill="n
 function nav(){const active=rowPlansFeature.hasScreen(screen)?rowPlansFeature.navDestination(screen):screen==='defaultLeader'?'settings':screen==='staffing'?'today':['person','personEdit','personNew'].includes(screen)?'people':['directory','directoryEdit'].includes(screen)?'settings':['team','teamEdit','record'].includes(screen)?origin:screen;return '<nav class="bottom" aria-label="Main navigation">'+['today','people','history','settings'].map(k=>'<button data-action="nav" data-id="'+k+'" '+(active===k?'aria-current="page"':'')+'>'+icon(k)+'<span>'+k[0].toUpperCase()+k.slice(1)+'</span></button>').join('')+'</nav>'}
 function draw(content){$('#app').innerHTML=(accessRole==='viewer'?'<p class="viewer-mode" role="status">Viewing only · Shared workspace</p>':'')+content+'<div id="feedback" role="alert" tabindex="-1" hidden></div><p id="sync-status" class="sync" role="status">'+esc(syncText)+'</p>'+nav();if(!canEdit())document.querySelectorAll('#app [data-action]').forEach(el=>{if(editingAction(el.dataset.action,el.dataset.id))el.remove()});dirty=false}
 function empty(title,text,action=''){return '<section class="empty"><h2>'+esc(title)+'</h2><p>'+esc(text)+'</p>'+action+'</section>'}
-function render(focus=false){if(!user){drawAuth();return}if(!ready){$('#app').innerHTML=header('Shared workspace')+'<section class="card"><p role="status">'+esc(accessMessage)+'</p>'+btn('Retry','retry','primary')+btn('Sign out','logout')+'</section>';return}
+function render(focus=false){rowPlansFeature.suspendIfHidden?.(user&&ready?screen:null);if(!user){drawAuth();return}if(!ready){$('#app').innerHTML=header('Shared workspace')+'<section class="card"><p role="status">'+esc(accessMessage)+'</p>'+btn('Retry','retry','primary')+btn('Sign out','logout')+'</section>';return}
 if(rowPlansFeature.hasScreen(screen))rowPlansFeature.render(screen);else ({defaultLeader:drawDefaultLeader,today:drawToday,staffing:drawStaffing,people:drawPeople,history:drawHistory,settings:drawSettings,create:drawCreate,team:drawTeam,teamEdit:drawTeamEdit,record:drawRecord,person:drawPerson,personEdit:drawPersonEdit,personNew:drawPersonEdit,directory:drawDirectory,directoryEdit:drawDirectoryEdit}[screen]||drawToday)();
 if(focus){window.scrollTo(0,0);$('h1')?.focus({preventScroll:true})}}
 function navigate(next,id=null,force=false){if(!canEdit()&&editScreens.has(next)){feedback(readOnlyMessage);return}if(saving)return;if(!force&&dirty&&!window.confirm('Discard unsaved changes?'))return;
