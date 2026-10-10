@@ -59,3 +59,6 @@
 @media(min-width:700px){.site-map-selection{left:12px;right:auto!important;width:320px;bottom:34px}.site-map-stage:has(.site-map-row-card) .site-map-svg,.site-map-stage:has(.site-map-row-card) .site-map-google-surface{height:600px;min-height:600px}}
 @media(min-width:900px){.site-map-google-surface{height:540px;max-height:70vh}}
 @media(min-width:900px){.site-map-svg{height:540px;max-height:70vh}.site-map-location-controls{grid-template-columns:1fr 1fr auto}.site-map-location-controls [data-map-action=stop]{grid-column:auto}}
+
+/* Leave Google attribution and responsive copyright rows visible. */
+.site-map-stage[data-view=satellite] .site-map-selection{bottom:80px}

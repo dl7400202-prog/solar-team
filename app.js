@@ -1,10 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.0';
 
 const supabase = createClient('https://oimiygdkrnsjzlivwafs.supabase.co','sb_publishable_WKPV0lAUCl1Lr53UujCR3g_zlQay4DS');
-import {createRowPlansFeature} from './row-plans.js?v=field-design-20261010-1';
-import {createSiteMap} from './site-map.js?v=field-design-20261010-1';
-import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=field-design-20261010-1';
-import {googleMapsConfig} from './google-maps-config.js?v=field-design-20261010-1';
+import {createRowPlansFeature} from './row-plans.js?v=field-design-20261010-2';
+import {createSiteMap} from './site-map.js?v=field-design-20261010-2';
+import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=field-design-20261010-2';
+import {googleMapsConfig} from './google-maps-config.js?v=field-design-20261010-2';
 let googleMapsLoader=null;
 const defaultJobGroups=['Team Leads','Technicians','Mechanics'];
 const seed = {people:[],fields:['North','South'],workTypes:['Solar panel installation','Bolt tightening','Bracket preparation','Truck unloading'],workUnits:{'Truck unloading':'loads'},jobGroups:defaultJobGroups,archivedJobGroups:[],teams:[],assignmentHistory:[],rowPlans:[],rowPlanHistory:[],panelTypes:[],defaultTeamLeaderId:null};

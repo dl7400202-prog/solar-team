@@ -141,6 +141,7 @@ export function createSiteMap(api) {
     const unavailable=mode==='satellite'&&!['ready','alignment'].includes(satelliteState);for(const action of ['locate','follow'])root.querySelector('[data-map-action="'+action+'"]').disabled=unavailable;
     if(svg&&view)svg.setAttribute('viewBox',[view.x,view.y,view.width,view.height].join(' '));
   }
+  function clearSelection(){selected=null;paintSelection(null);if(mode==='satellite')satellite?.update(filtered(),null,{focus:false});}
   function revealSelection(){const host=root;if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>{if(visible&&root===host&&selected!==null)host.querySelector('.site-map-stage')?.scrollIntoView({block:'center'});});}
   function select(row,focus=true){if(!row)return;selected=row.rowNumber;follow=false;if(mode==='satellite'){satellite.update(filtered(),selected,{focus});paintSelection(row);paintLocation();}else{if(focus)fit([row]);paint();}if(focus)revealSelection();}
   function updateModeCopy(){
@@ -169,8 +170,8 @@ export function createSiteMap(api) {
       else if(action==='fit'){follow=false;selected=null;if(mode==='satellite'){satellite.update(filtered(),selected);satellite.fit();paintSelection(null);paintLocation();}else{fit();paint();}}
       else if(action==='dismiss'){selected=null;paintSelection(null);paint();root.querySelector('[data-map-action="'+(mode==='satellite'?'view-satellite':'view-plan')+'"]')?.focus({preventScroll:true});}
       else if(action==='zoom-in'||action==='zoom-out')zoom(action==='zoom-in'?.6:1/.6);
-      else if(action==='locate'){follow=true;const state=tracker.state();if(state.fix){const p=projectLocation(state.fix,source()?.crs,projection());if(p){center(p,true);paint();}}else tracker.start();}
-      else if(action==='follow'){follow=!(follow&&tracker.state().enabled);if(follow){tracker.start();const fix=tracker.state().fix,p=fix&&projectLocation(fix,source()?.crs,projection());if(p)center(p,true);}paint();}
+      else if(action==='locate'){clearSelection();follow=true;const state=tracker.state();if(state.fix){const p=projectLocation(state.fix,source()?.crs,projection());if(p){center(p,true);paint();}}else tracker.start();}
+      else if(action==='follow'){follow=!(follow&&tracker.state().enabled);if(follow){clearSelection();tracker.start();const fix=tracker.state().fix,p=fix&&projectLocation(fix,source()?.crs,projection());if(p)center(p,true);}paint();}
       else if(action==='stop'){follow=false;tracker.stop();}
       else if(['open','pallets'].includes(action)){const row=geometry().find(r=>r.rowNumber===selected),plan=row&&planFor(row);if(plan)api.openRow(plan.id,action==='pallets');}
     },{signal});
