@@ -76,7 +76,7 @@ export function createSiteMap(api) {
   let selectionKey=null,fieldRole='worker',imagery=null,imageryEpoch=0;
   const button=(label,action,extra='')=>'<button type="button" data-map-action="'+action+'" '+extra+'>'+label+'</button>';
   function imageryNote(text='',credit=false){text=api.localiseText?.(text)||text;const note=root?.querySelector('.site-map-imagery-note');if(note){note.innerHTML=credit?'<a href="https://www.geodanmark.dk/home/vejledninger/vilkaar-for-data-anvendelse/" target="_blank" rel="noopener noreferrer">@GeoDanmark</a> · '+esc(text)+' · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>':esc(text);note.hidden=!text;}}
-  async function loadAerial(){const host=root,token=++imageryEpoch;imageryNote('Loading aerial photo…');try{const result=await api.getImagery();if(token!==imageryEpoch||root!==host||!visible||mode!=='aerial')return;imagery=result;imageryNote((api.localiseText?.('Aerial photo')||'Photo')+' '+result.meta.year,true);paint();}catch(error){if(token!==imageryEpoch||root!==host||!visible)return;imagery=null;setMode('plan');imageryNote(error.message||'Aerial photo is unavailable. Use Row plan.');}}
+  async function loadAerial(){const host=root,token=++imageryEpoch;imageryNote('Loading aerial photo…');try{const result=await api.getImagery();if(token!==imageryEpoch||root!==host||!visible||mode!=='aerial')return;imagery=result;imageryNote((api.localiseText?.('Aerial photo')||'Photo')+' '+result.meta.year,true);paint();}catch(error){if(token!==imageryEpoch||root!==host||!visible||mode!=='aerial')return;imagery=null;setMode('plan');imageryNote(error.message||'Aerial photo is unavailable. Use Row plan.');}}
   function viewButtons(){return '<div class="site-map-view-switch" role="group" aria-label="Map layers">'+button('Scheme','view-plan','aria-pressed="'+(mode==='plan')+'"')+(api.hasImagery?.()?button('Aerial photo','view-aerial','aria-pressed="'+(mode==='aerial')+'"'):'')+(api.createSatellite?button('Google satellite','view-satellite','aria-pressed="'+(mode==='satellite')+'" '+(api.isOffline?.()?'disabled title="Google satellite needs a connection"':'')):'')+'</div>';}
   function html(field='',term='',options={}){
     if(api.isOffline?.()&&mode==='satellite'){satellite?.destroy();tracker.stop();mode=api.hasImagery?.()?'aerial':'plan';}
@@ -165,7 +165,7 @@ export function createSiteMap(api) {
     root.querySelector('.site-map-plan').hidden=mode==='satellite';root.querySelector('.site-map-google-surface').hidden=mode!=='satellite';
     for(const item of root.querySelectorAll('.site-map-view-switch button'))item.setAttribute('aria-pressed',String(item.dataset.mapAction==='view-'+mode));
     updateModeCopy();
-    if(mode==='satellite'){getSatellite();satelliteState='loading';satellite.update(filtered(),selected,{focus:selected!==null});satellite.mount(root.querySelector('.site-map-google-canvas'));paintSelection(geometry().find(r=>r.rowNumber===selected));paintLocation();}
+    if(mode==='satellite'){imageryEpoch++;imageryNote();getSatellite();satelliteState='loading';satellite.update(filtered(),selected,{focus:selected!==null});satellite.mount(root.querySelector('.site-map-google-canvas'));paintSelection(geometry().find(r=>r.rowNumber===selected));paintLocation();}
     else{satellite?.destroy();paint();if(mode==='aerial')void loadAerial();else{imageryEpoch++;imageryNote();}} 
     if(selected!==null&&!root.classList?.contains('site-map-field'))revealSelection();
   }
