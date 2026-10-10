@@ -286,6 +286,19 @@ export function createRowPlansFeature(api) {
     if(height<=0)return '';
     return '<g class="svg-motor-clearance" data-row-number="'+esc(rowNumber)+'" aria-label="Empty panel space immediately north of the motor"><title>No panel above the motor</title><rect x="'+x+'" y="'+top+'" width="'+width+'" height="'+height+'" fill="#e9eef3"/><path d="M'+(x+width/2)+' '+top+'V'+y+'" stroke="#8b9cae" stroke-width="3"/></g>';
   }
+  function motorMark(gap) {
+    return {y:(gap.top+gap.bottom)/2,stroke:Math.min(3,gap.bottom-gap.top)};
+  }
+  function motorGroupSplit(plan) {
+    if(!Number.isInteger(plan.motorAfterPanel))return null;
+    let first=1;
+    for(let i=0;i<plan.panelGroups.length;i++){
+      const last=first+plan.panelGroups[i].quantity-1;
+      if(first<=plan.motorAfterPanel&&plan.motorAfterPanel<last)return {index:i,first,last,before:plan.motorAfterPanel-first+1,after:last-plan.motorAfterPanel};
+      first=last+1;
+    }
+    return null;
+  }
   function panelDiagram(plan) {
     const sum=plan.panelGroups.reduce((value,g)=>value+g.quantity,0),total=plan.panelCount||sum;
     if(!total||!plan.panelGroups.length)return '<div class="plan-no-diagram"><strong>Panel layout is awaiting information</strong><p>Add panel groups, quantities and directions in the constructor.</p></div>';
@@ -298,20 +311,24 @@ export function createRowPlansFeature(api) {
     const located=mapped&&length>0;
     const motorPoint=geometry?.drive?.point,motorY=plan.motorAfterPanel===null?null:46+(located&&geometry.drive?.after===plan.motorAfterPanel&&validPoint(motorPoint)?position(motorPoint):plan.motorAfterPanel/total)*548;
     const motor=motorY===null?null:{after:plan.motorAfterPanel,...motorGap(motorY,548/total,46)};
+    const split=motorGroupSplit(plan);
     const action=(id,label)=>' role="button" tabindex="0" data-action="plan-diagram-item" data-id="'+id+'" aria-label="'+esc(label)+'"';
     let index=0,svg=svgStart('Installation scheme for row '+plan.rowNumber+', numbered north to south').replace('role="img"','role="group"');
     svg+='<text x="180" y="26" text-anchor="middle" class="svg-title">Row '+esc(plan.rowNumber)+'</text><text x="54" y="26" text-anchor="middle" class="svg-small">West</text><text x="306" y="26" text-anchor="middle" class="svg-small">East</text><rect x="142" y="46" width="76" height="548" rx="4" fill="#e9eef3" stroke="#8b9cae"/>';
     plan.panelGroups.forEach((group,i)=>{
       const first=index+1,y=46+(located?position(sourceGroups[i].north):index/total)*548;index+=group.quantity;
       const end=46+(located?position(sourceGroups[i].south):index/total)*548,height=Math.max(5,end-y),middle=y+height/2;
-      svg+='<g'+action('group-'+i,'Group '+(i+1)+', panels '+first+' to '+index+', '+direction(group.positiveSide))+'>'+panelCells(142,y,end,76,first,group.quantity,motor,plan.rowNumber)+(diagramItem==='group-'+i?'<rect x="142" y="'+y+'" width="76" height="'+height+'" fill="none" stroke="#00875b" stroke-width="3"/>':'')+'<rect x="142" y="'+y+'" width="5" height="'+height+'" fill="'+colorValue(typeById(group.typeId)?.color)+'"/><text x="132" y="'+(y+16)+'" text-anchor="end" class="svg-label">'+first+'–'+index+'</text><text x="180" y="'+(middle+5)+'" text-anchor="middle" class="svg-pallet-row-direction">'+(group.positiveSide==='N'?'↑ + N':group.positiveSide==='S'?'↓ + S':'? +')+'</text><text x="228" y="'+(y+16)+'" class="svg-small">Group '+(i+1)+'</text></g>';
+      svg+='<g'+action('group-'+i,'Group '+(i+1)+', panels '+first+' to '+index+', '+direction(group.positiveSide))+'>'+panelCells(142,y,end,76,first,group.quantity,motor,plan.rowNumber)+(diagramItem==='group-'+i?'<rect x="139" y="'+(y-3)+'" width="82" height="'+(height+6)+'" fill="none" stroke="#00875b" stroke-width="2"/>':'')+'<rect x="142" y="'+y+'" width="5" height="'+height+'" fill="'+colorValue(typeById(group.typeId)?.color)+'"/><text x="132" y="'+(y+16)+'" text-anchor="end" class="svg-label">'+first+'–'+index+'</text><text x="228" y="'+(middle+5)+'" class="svg-row-direction">'+(group.positiveSide==='N'?'↑ + N':group.positiveSide==='S'?'↓ + S':'? +')+'</text><text x="228" y="'+(y+16)+'" class="svg-small">Group '+(i+1)+' · '+group.quantity+'</text>';
+      if(split?.index===i&&split.after<=6&&motor){const tailTop=Math.max(y,motor.bottom);svg+='<g class="svg-motor-tail" data-panel-count="'+split.after+'" aria-label="Panels '+(plan.motorAfterPanel+1)+' to '+index+', '+split.after+' complete panels after the motor"><path d="M220 '+tailTop+'h4V'+end+'h-4" fill="none" stroke="#00875b" stroke-width="1"/><text x="232" y="'+((tailTop+end)/2+3)+'" class="svg-tail-count">'+(plan.motorAfterPanel+1)+'–'+index+' · '+split.after+' panels</text></g>';}
+      svg+='</g>';
     });
     if(sum<total)svg+='<text x="228" y="'+(46+sum/total*548+22)+'" class="svg-small">'+(total-sum)+' pending</text>';
-    if(motorY!==null){const y=motorY;svg+='<g'+action('motor','Motor after panel '+plan.motorAfterPanel)+'><rect x="137" y="'+(y-20)+'" width="86" height="40" fill="transparent"/>'+motorClearance(142,y,76,548/total,46,plan.rowNumber)+'<path d="M135 '+y+'H225" stroke="#ae3042" stroke-width="3"/><circle cx="180" cy="'+y+'" r="6" fill="#fff" stroke="#ae3042" stroke-width="3"/><text x="228" y="'+(y+4)+'" class="svg-motor">Motor · '+plan.motorAfterPanel+'</text></g>';}
+    if(motorY!==null){const mark=motorMark(motor),y=mark.y;svg+='<g'+action('motor','Motor after panel '+plan.motorAfterPanel)+'><rect x="108" y="'+(y-20)+'" width="32" height="40" fill="transparent"/>'+motorClearance(142,motorY,76,548/total,46,plan.rowNumber)+'<path class="svg-row-motor-line" d="M126 '+y+'H225" stroke="#ae3042" stroke-width="'+mark.stroke+'"/><circle class="svg-row-motor-marker" cx="126" cy="'+y+'" r="6" fill="#fff" stroke="#ae3042" stroke-width="3"/><text x="228" y="'+(y+4)+'" class="svg-motor">Motor · after '+plan.motorAfterPanel+'</text></g>';}
     if(located)plan.dampers.forEach((d,i)=>{const post=geometry.posts?.find(p=>p.post===d.post&&p.side===d.side);if(!validPoint(post?.point))return;const x=d.side==='E'?306:54,y=46+position(post.point)*548;svg+='<g'+action('damper-'+i,'Damper post '+d.post+', '+(d.side==='E'?'East':'West'))+'><path d="M'+(d.side==='E'?220:140)+' '+y+'H'+x+'" stroke="#00875b" stroke-width="2" stroke-dasharray="3 3"/><rect x="'+(x-18)+'" y="'+(y-15)+'" width="36" height="30" rx="7" fill="#e0f6eb" stroke="#00875b" stroke-width="2"/><text x="'+x+'" y="'+(y+4)+'" text-anchor="middle" class="svg-damper">'+d.post+' '+d.side+'</text></g>';});
     svg+='<text x="180" y="623" text-anchor="middle" class="svg-small">'+total+' panel positions · North → South</text></svg>';
     const controls='<div class="plan-element-actions" aria-label="Installation element details">'+plan.panelGroups.map((g,i)=>btn('Group '+(i+1),'plan-diagram-item','secondary','group-'+i)).join('')+(plan.motorAfterPanel!==null?btn('Motor','plan-diagram-item','secondary','motor'):'')+plan.dampers.map((d,i)=>btn('Post '+d.post+' '+d.side,'plan-diagram-item','secondary','damper-'+i)).join('')+'</div>';
-    return (!plan.panelsKnown?'<p class="plan-notice">Incomplete panel instructions</p>':'')+'<p class="hint">Tap a group, motor or damper for details. Green post markers are dampers; the red line is the motor.</p>'+svg+(plan.motorAfterPanel===null?'<p class="hint">Motor position has not been supplied.</p>':'')+(!located?'<p class="plan-notice">Post placement on this scheme is unavailable. Use the post buttons or Dampers view; post and panel numbers are separate.</p>':'')+controls+elementDetails(plan);
+    const counts=split?'<div class="plan-motor-counts" aria-label="Group '+(split.index+1)+' panel counts around the motor"><div><small>Before motor · North</small><strong>'+split.before+' panels · '+split.first+'–'+plan.motorAfterPanel+'</strong></div><div><small>After motor · South</small><strong>'+split.after+' panels · '+(plan.motorAfterPanel+1)+'–'+split.last+'</strong></div></div>':'';
+    return (!plan.panelsKnown?'<p class="plan-notice">Incomplete panel instructions</p>':'')+'<p class="hint">Tap a group, motor or damper for details. Each rectangle is one complete panel. The red motor marker sits in the empty space.</p>'+counts+svg+(plan.motorAfterPanel===null?'<p class="hint">Motor position has not been supplied.</p>':'')+(!located?'<p class="plan-notice">Post placement on this scheme is unavailable. Use the post buttons or Dampers view; post and panel numbers are separate.</p>':'')+controls+elementDetails(plan);
   }
   function damperDiagram(plan) {
     if (!plan.dampers.length) return '<div class="plan-no-diagram"><strong>'+(plan.dampersKnown?'No dampers required':'Damper layout is awaiting information')+'</strong><p>Set the post number and East/West side for each damper in the constructor.</p></div>';
@@ -337,12 +354,12 @@ export function createRowPlansFeature(api) {
         const span = Math.min(group.quantity,Math.max(0,row.panelCount-ordinal));
         if (!span) break;
         const y = rowStart+ordinal/total*length, groupHeight = span/total*length;
-        drawing += '<rect x="'+x+'" y="'+y+'" width="5" height="'+groupHeight+'" fill="'+colorValue(typeById(group.typeId)?.color)+'"/><text x="'+(x+30)+'" y="'+(y+groupHeight/2+4)+'" text-anchor="middle" class="svg-pallet-row-direction">'+(group.positiveSide==='N'?'↑ + N':group.positiveSide==='S'?'↓ + S':'? +')+'</text>';
+        drawing += '<rect x="'+x+'" y="'+y+'" width="5" height="'+groupHeight+'" fill="'+colorValue(typeById(group.typeId)?.color)+'"/><text x="'+(x<180?x-8:x+68)+'" y="'+(y+groupHeight/2+4)+'" text-anchor="'+(x<180?'end':'start')+'" class="svg-row-direction">'+(group.positiveSide==='N'?'↑ + N':group.positiveSide==='S'?'↓ + S':'? +')+'</text>';
         ordinal += span;
       }
       if (geometry.motorPosition !== null) {
-        const y = start+geometry.motorPosition*length;
-        drawing += motorClearance(x,y,60,length/total,rowStart,row.rowNumber)+'<path d="M'+(x-3)+' '+y+'H'+(x+63)+'" stroke="#ae3042" class="svg-pallet-motor" data-row-number="'+esc(row.rowNumber)+'" stroke-width="3"/>';
+        const y = start+geometry.motorPosition*length,mark=motorMark(motor);
+        drawing += motorClearance(x,y,60,length/total,rowStart,row.rowNumber)+'<path d="M'+(x-3)+' '+mark.y+'H'+(x+63)+'" stroke="#ae3042" class="svg-pallet-motor" data-row-number="'+esc(row.rowNumber)+'" stroke-width="'+mark.stroke+'"/>';
       }
       return drawing+'<text x="'+(x+30)+'" y="'+(rowStart+rowLength+23)+'" text-anchor="middle" class="svg-small">Panel '+row.panelCount+'</text>';
     };
