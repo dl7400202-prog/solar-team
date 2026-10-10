@@ -134,6 +134,11 @@
 .plan-driver-footer{flex:0 0 auto;background:#fff;border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));text-align:center}
 .plan-driver-footer strong{display:block;font-size:14px}
 .plan-driver-footer span{display:block;font-size:12px;color:var(--muted);margin-top:4px}
+.plan-driver-nav{display:grid;grid-template-columns:64px minmax(0,1fr) 64px;align-items:center;gap:12px;margin-bottom:12px}
+.plan-driver-nav button{width:64px;min-height:52px;margin:0;padding:4px;border-radius:12px}
+.plan-driver-nav button span{font-size:28px;color:inherit;margin:0;line-height:1}
+.plan-driver-nav small{display:block;font-size:11px;color:var(--muted)}
+.plan-driver-nav strong{font-size:16px;margin-top:3px;overflow-wrap:anywhere}
 .plan-element-details{border:1px solid #b9d8c8;border-radius:12px;padding:14px;margin:12px 0;background:#f1faf5;scroll-margin-top:75px}
 .plan-element-details h3{font-size:16px;margin:0 0 8px}
 .plan-element-details .plan-type-badge{margin:8px 0}

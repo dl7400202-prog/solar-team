@@ -45,12 +45,36 @@ test('last row resumes after feature restart and unavailable storage or deleted 
   await blocked.feature.handleAction('plan-row','South-901');assert.equal(blocked.state.screen,'rowPlan');await blocked.feature.handleAction('plan-hub');assert.match(blocked.state.html,/Rows/);
 });
 
-test('viewer driver view keeps the selected pair, supports changing the right row and returns to pallets without writes',async()=>{
-  const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan({motorAfterPanel:46}),plan({id:'South-902',rowNumber:902,panelCount:75,motorAfterPanel:21,panelGroups:plan().panelGroups.slice(0,3)}),plan({id:'South-903',rowNumber:903,motorAfterPanel:46})]);
+test('viewer driver view moves both rows by two, recalculates pallets and returns to the current pair without writes',async()=>{
+  const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan({id:'South-904',rowNumber:904,motorAfterPanel:46}),plan({motorAfterPanel:46}),plan({id:'South-902',rowNumber:902,panelCount:75,motorAfterPanel:21,panelGroups:plan().panelGroups.slice(0,3)}),plan({id:'South-903',rowNumber:903,motorAfterPanel:46})]);
+  const before=structuredClone(h.db);
   h.api.canEdit=()=>false;await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','pallets');await h.feature.handleAction('plan-driver');
   assert.equal(h.state.screen,'rowPalletDriver');assert.match(h.state.html,/5 pallets/);assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,5);assert.match(h.state.html,/Label on the left when facing/);
-  assert.deepEqual(h.feature.back('rowPalletDriver'),{screen:'rowPlan',id:null});h.feature.handleInput({dataset:{palletNeighbor:''},value:'South-903'});assert.match(h.state.html,/6 pallets/);
+  assert.doesNotMatch(h.state.html,/data-pallet-neighbor/);assert.match(h.state.html,/aria-label="Previous pair"[^>]*disabled/);assert.match(h.state.html,/Next pair[\s\S]*903 \/ 904/);
+  assert.deepEqual(h.feature.back('rowPalletDriver'),{screen:'rowPlan',id:null});h.feature.handleInput({dataset:{palletNeighbor:''},value:'South-903'});assert.match(h.state.html,/Rows 901 \/ 902/);assert.match(h.state.html,/5 pallets/);
+  await h.feature.handleAction('plan-driver-next');assert.match(h.state.html,/Rows 903 \/ 904/);assert.match(h.state.html,/6 pallets/);assert.doesNotMatch(h.state.html,/data-row-number="901"/);assert.match(h.state.html,/aria-label="Next pair"[^>]*disabled/);
+  await h.feature.handleAction('plan-driver-next');assert.match(h.state.html,/Rows 903 \/ 904/);
+  await h.feature.handleAction('plan-driver-previous');assert.match(h.state.html,/Rows 901 \/ 902/);assert.match(h.state.html,/5 pallets/);
+  await h.feature.handleAction('plan-driver-next');
   await h.feature.handleAction('plan-driver-close');assert.equal(h.state.screen,'rowPlan');assert.match(h.state.html,/200 panels/);assert.equal(h.events.filter(e=>e.kind).length,0);
+  assert.match(h.state.html,/rows 903 and 904/);assert.deepEqual(h.db,before);
+});
+
+test('driver entry replaces a nonconsecutive manual neighbour and sequential steps never skip gaps or cross fields',async()=>{
+  const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan(),plan({id:'South-902',rowNumber:902}),plan({id:'South-903',rowNumber:903}),plan({id:'North-904',field:'North',rowNumber:904}),plan({id:'South-905',rowNumber:905}),plan({id:'South-906',rowNumber:906})]);
+  await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','pallets');h.feature.handleInput({dataset:{palletNeighbor:''},value:'South-905'});assert.match(h.state.html,/rows 901 and 905/);
+  await h.feature.handleAction('plan-driver');assert.match(h.state.html,/Rows 901 \/ 902/);assert.match(h.state.html,/aria-label="Next pair"[^>]*disabled/);
+  await h.feature.handleAction('plan-driver-next');assert.match(h.state.html,/Rows 901 \/ 902/);
+  await h.feature.handleAction('plan-row','South-903');await h.feature.handleAction('plan-driver');assert.doesNotMatch(h.state.html,/class="svg-auto-pallet"/);assert.match(h.state.html,/Row 904 is not available in South/);assert.doesNotMatch(h.state.html,/North-904/);
+  await h.feature.handleAction('plan-driver-previous');assert.match(h.state.html,/Rows 901 \/ 902/);assert.equal(h.events.filter(e=>e.kind).length,0);
+});
+
+test('driver handles unknown panel counts while retaining consecutive pairs and restores the last stepped row',async()=>{
+  const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan(),plan({id:'South-902',rowNumber:902,panelCount:null,panelsKnown:false}),plan({id:'South-903',rowNumber:903}),plan({id:'South-904',rowNumber:904})]);
+  const remembered=new Map();h.api.storage={getItem:key=>remembered.get(key),setItem:(key,value)=>remembered.set(key,value)};
+  await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-driver');assert.match(h.state.html,/Rows 901 \/ 902/);assert.doesNotMatch(h.state.html,/class="svg-auto-pallet"/);
+  await h.feature.handleAction('plan-driver-next');assert.match(h.state.html,/Rows 903 \/ 904/);assert.match(h.state.html,/6 pallets/);assert.equal(remembered.get('solar-team-last-row-v1'),'South-903');
+  await h.feature.handleAction('plan-driver-close');assert.match(h.state.html,/rows 903 and 904/);assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 
 test('combined scheme uses source post positions only for a matching layout and element details expose original IDs',async()=>{
