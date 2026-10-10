@@ -1,5 +1,5 @@
 /* Row installation plans are shared specifications; completion stays in Record work. */
-const ROUTES = new Set(['rowPlans', 'rowPlan', 'rowPlanEdit', 'panelTypes', 'panelTypeEdit', 'rowPlanImport']);
+const ROUTES = new Set(['rowPlans', 'rowPlan', 'rowPalletDriver', 'rowPlanEdit', 'panelTypes', 'panelTypeEdit', 'rowPlanImport']);
 const MAX_INT = 2147483647;
 const copy = value => structuredClone(value);
 const present = value => value !== null && value !== undefined && String(value).trim() !== '';
@@ -140,11 +140,16 @@ export function createRowPlansFeature(api) {
   let selectedRow = null, selectedType = null, currentScreen = 'rowPlans', tab = 'plan', mode = 'panels';
   let draft = null, editBase = null, typeBase = null, editDirty = false, importText = '', importPreview = null, typeParent='settings';
   let palletNeighborId = null;
+  let diagramItem = null;
+  const recentKey='solar-team-last-row-v1';
+  function recentRow(){try{const id=(api.storage||globalThis.localStorage)?.getItem(recentKey);return typeof id==='string'?planById(id):null;}catch{return null;}}
+  function rememberRow(plan){try{(api.storage||globalThis.localStorage)?.setItem(recentKey,plan.id);}catch{/* Browsing still works when storage is unavailable. */}}
+  function openRow(id,pallets=false){if(!planById(id))return;selectedRow=id;palletNeighborId=null;diagramItem=null;tab=pallets?'diagram':'plan';mode=pallets?'pallets':'panels';api.navigate('rowPlan');}
   let listMode='list',siteMap=null,visibleRows=60;
   let geometryRows=null,geometryIndex=new Map();
   const mapRecord = plan => {const rows=database().siteMap?.rows;if(rows!==geometryRows){geometryRows=rows;geometryIndex=new Map((Array.isArray(rows)?rows:[]).map(r=>[r.field+'\0'+r.rowNumber,r]));}return geometryIndex.get(plan.field+'\0'+plan.rowNumber);};
   function mapFeature(){
-    if(!siteMap&&api.createMap)siteMap=api.createMap({openRow:(id,pallets=false)=>{selectedRow=id;palletNeighborId=null;tab=pallets?'diagram':'plan';mode=pallets?'pallets':'panels';api.navigate('rowPlan');}});
+    if(!siteMap&&api.createMap)siteMap=api.createMap({openRow});
     return siteMap;
   }
   const database = () => api.getDb();
@@ -181,12 +186,14 @@ export function createRowPlansFeature(api) {
     const context = teamContext ? '<section class="card plan-context"><strong>Team '+esc(teamContext.number)+' · '+esc(teamContext.field)+'</strong><small>'+esc(teamContext.work)+' · '+(present(teamContext.from)?'Start row '+esc(teamContext.from):'No start row')+'</small></section>' : '<p class="rows-subtitle">'+plans().length+' rows · '+esc(fields().join(' / '))+'</p>';
     const views='<div class="plan-tabs" role="group" aria-label="Rows view">'+['list','map'].map(v=>'<button type="button" data-action="plan-list-mode" data-id="'+v+'" class="'+(listMode===v?'active':'')+'" aria-pressed="'+(listMode===v)+'">'+(v==='list'?'List':'Map')+'</button>').join('')+'</div>';
     const tools='<details class="plan-tools"><summary>Row tools</summary><div class="plan-toolbar">'+btn('Add row plan', 'plan-new', 'compact primary')+btn('Panel types', 'plan-types', 'compact')+btn('Import plans', 'plan-import', 'compact')+'</div></details>';
-    renderPage('Rows', '<div class="rows-hub">'+context+'<form data-form="plan-filter" class="plan-filters"><div class="plan-search-line"><label><span class="sr-only">Field</span><select name="field">'+option('', 'All fields', field)+selectOptions(fields(), field)+'</select></label><label><span class="sr-only">Find row, type or post ID</span><input name="query" type="search" value="'+esc(query)+'" maxlength="60" placeholder="Row / ID" inputmode="search" enterkeyhint="search"></label><button type="submit" class="compact" aria-label="Find rows">Find</button></div>'+(field||query?'<div class="plan-filter-summary"><small>'+esc(field||'All fields')+(query?' · '+esc(query):'')+'</small>'+btn('Clear','plan-reset','text-button')+'</div>':'')+'</form>'+views+'<div id="plan-results">'+(listMode==='map'?(mapFeature()?.html(field,query)||'<section class="empty">Map is unavailable.</section>'):listRows())+'</div>'+tools+'</div>');
+    const recent=recentRow(),resume=recent&&!teamContext&&!field&&!query?'<button type="button" class="plan-resume" data-action="plan-row" data-id="'+esc(recent.id)+'"><span><small>Continue where you left off</small><strong>Row '+esc(recent.rowNumber)+' · '+esc(recent.field)+'</strong></span><span aria-hidden="true">→</span></button>':'';
+    renderPage('Rows', '<div class="rows-hub">'+context+resume+'<form data-form="plan-filter" class="plan-filters"><div class="plan-search-line"><label><span class="sr-only">Field</span><select name="field">'+option('', 'All fields', field)+selectOptions(fields(), field)+'</select></label><label><span class="sr-only">Find row, type or post ID</span><input name="query" type="search" value="'+esc(query)+'" maxlength="60" placeholder="Row / ID" inputmode="search" enterkeyhint="search"></label><button type="submit" class="compact" aria-label="Find rows">Find</button></div>'+(field||query?'<div class="plan-filter-summary"><small>'+esc(field||'All fields')+(query?' · '+esc(query):'')+'</small>'+btn('Clear','plan-reset','text-button')+'</div>':'')+'</form>'+views+'<div id="plan-results">'+(listMode==='map'?(mapFeature()?.html(field,query)||'<section class="empty">Map is unavailable.</section>'):listRows())+'</div>'+tools+'</div>');
     if(listMode==='map'&&typeof document!=='undefined')mapFeature()?.mount(document.querySelector('.site-map'));
   }
   function drawPlan() {
     const plan = planById(selectedRow);
     if (!plan) { renderPage('Row plan', '<section class="empty"><h2>Row plan is unavailable</h2>'+btn('View row plans', 'plan-list')+'</section>'); return; }
+    rememberRow(plan);
     const mixed=new Set(plan.panelGroups.map(g=>g.typeId)).size>1;
     const active=tab==='plan'?'instructions':mode;
     const tabs = '<div class="plan-tabs plan-section-tabs" role="group" aria-label="Plan view">'+[['instructions','Instructions'],['panels','Panels'],['dampers','Dampers'],['pallets','Pallets']].map(([v,label]) => '<button type="button" class="'+(active===v?'active':'')+'" data-action="plan-section" data-id="'+v+'" aria-pressed="'+(active===v)+'">'+label+'</button>').join('')+'</div>';
@@ -204,10 +211,10 @@ export function createRowPlansFeature(api) {
     const candidates = plans().filter(row => row.field===plan.field && row.rowNumber!==plan.rowNumber && row.id!==plan.id);
     return candidates.find(row => row.id===palletNeighborId) || (palletNeighborId===null && candidates.find(row => row.rowNumber===plan.rowNumber+1)) || null;
   }
-  function palletPairControls(plan) {
+  function palletPairControls(plan,compact=false) {
     const neighbor = palletNeighbor(plan);
     const candidates = plans().filter(row => row.field===plan.field && row.rowNumber!==plan.rowNumber && row.id!==plan.id).sort((a,b)=>a.rowNumber-b.rowNumber);
-    return '<div class="grid2 plan-pallet-pair"><div><small>Row on your left</small><strong>Row '+esc(plan.rowNumber ?? 'not set')+'</strong><small>'+esc(plan.panelCount===null?'Panel count not supplied':plan.panelCount+' panels')+'</small></div><label>Row on your right<select name="palletNeighborId" data-pallet-neighbor>'+option('','Choose row',neighbor?.id || '')+candidates.map(row=>option(row.id,'Row '+row.rowNumber+' · '+(row.panelCount===null?'count pending':row.panelCount+' panels'),neighbor?.id || '')).join('')+'</select></label></div>';
+    return '<div class="grid2 plan-pallet-pair"><div><small>Row on your left</small><strong>Row '+esc(plan.rowNumber ?? 'not set')+'</strong><small>'+esc(plan.panelCount===null?'Panel count not supplied':plan.panelCount+' panels')+'</small></div><label>Row on your right<select name="palletNeighborId" data-pallet-neighbor aria-label="Row on your right">'+option('','Choose row',neighbor?.id || '')+candidates.map(row=>option(row.id,(compact?'':'Row ')+row.rowNumber+' · '+(row.panelCount===null?'count pending':row.panelCount+' panels'),neighbor?.id || '')).join('')+'</select>'+(compact&&neighbor?'<small>'+esc(neighbor.panelCount===null?'Panel count not supplied':neighbor.panelCount+' panels')+'</small>':'')+'</label></div>';
   }
   function automaticPalletSummary(plan) {
     const neighbor = palletNeighbor(plan), layout = automaticPalletLayout(plan,neighbor);
@@ -229,16 +236,44 @@ export function createRowPlansFeature(api) {
   function svgStart(title, height = 660) {
     return '<svg class="plan-svg" viewBox="0 0 360 '+height+'" role="img" aria-label="'+esc(title)+'" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="plan-panel-lines" width="74" height="9" patternUnits="userSpaceOnUse"><rect width="74" height="9" fill="#183b5c"/><path d="M0 8.5h74M37 0v9" stroke="#5b7993" stroke-width=".6"/></pattern></defs>';
   }
+  function elementDetails(plan){
+    if(!diagramItem)return '';
+    const geometry=mapRecord(plan);let content='';
+    if(diagramItem.startsWith('group-')){
+      const index=Number(diagramItem.slice(6)),group=plan.panelGroups[index];if(!group)return '';
+      const first=plan.panelGroups.slice(0,index).reduce((sum,g)=>sum+g.quantity,1),last=first+group.quantity-1,sourceGroup=geometry?.groups?.find(g=>g.first===first&&g.last===last);
+      content='<h3>Group '+(index+1)+' · Panels '+first+'–'+last+'</h3><strong class="plan-direction">'+direction(group.positiveSide)+'</strong>'+typeBadge(group.typeId)+'<p>'+group.quantity+' panels'+(sourceGroup?' · String ID '+esc(sourceGroup.id):'')+'</p>'+(group.sourceToken?'<small>Original marking: '+esc(group.sourceToken)+'</small>':'')+(sourceGroup?.crossesDrive?'<p class="plan-drive-note">Crosses the drive gap · 21 north + 4 south</p>':'');
+    }else if(diagramItem.startsWith('damper-')){
+      const damper=plan.dampers[Number(diagramItem.slice(7))];if(!damper)return '';
+      const post=geometry?.posts?.find(p=>p.post===damper.post&&p.side===damper.side);
+      content='<h3>Damper · Post '+esc(damper.post)+'</h3><strong>'+esc(damper.side==='E'?'East →':'← West')+'</strong><p>Count posts from the north end.</p>'+(post?'<small>Pile ID '+esc(post.id)+'</small>':'');
+    }else if(diagramItem==='motor')content='<h3>Motor</h3><strong>'+(plan.motorAfterPanel==null?'Position not supplied':'After panel '+esc(plan.motorAfterPanel))+'</strong>'+(geometry?.motor?'<p>Post '+esc(geometry.motor.post)+' · Pile ID '+esc(geometry.motor.id)+'</p>':'');
+    return content?'<section id="plan-element-details" class="plan-element-details" tabindex="-1" aria-label="Selected installation element">'+content+btn('Close details','plan-diagram-close','secondary')+'</section>':'';
+  }
   function panelDiagram(plan) {
-    const sum = plan.panelGroups.reduce((value,g) => value+g.quantity,0), total = plan.panelCount || sum;
-    if (!total || !plan.panelGroups.length) return '<div class="plan-no-diagram"><strong>Panel layout is awaiting information</strong><p>Add panel groups, quantities and directions in the constructor.</p></div>';
-    let index=0, svg=svgStart('Panel groups for row '+plan.rowNumber+', numbered north to south');
-    svg += '<text x="150" y="26" text-anchor="middle" class="svg-title">Row '+esc(plan.rowNumber)+'</text><rect x="110" y="46" width="80" height="548" rx="4" fill="#e9eef3" stroke="#8b9cae"/>';
-    plan.panelGroups.forEach((group,i) => {const y=46+index/total*548,height=group.quantity/total*548,type=typeById(group.typeId),first=index+1;index+=group.quantity;svg+='<rect x="113" y="'+y+'" width="74" height="'+height+'" fill="url(#plan-panel-lines)"/><rect x="110" y="'+y+'" width="5" height="'+height+'" fill="'+colorValue(type?.color)+'"/><path d="M96 '+y+'H194" stroke="#7b93a6" stroke-dasharray="3 3"/><text x="98" y="'+(y+Math.min(18,height/2))+'" text-anchor="end" class="svg-label">'+first+'–'+index+'</text><text x="205" y="'+(y+Math.min(18,height/2))+'" class="svg-direction">'+esc(direction(group.positiveSide))+'</text><text x="205" y="'+(y+Math.min(34,height*.75))+'" class="svg-small">Group '+(i+1)+' · '+group.quantity+'</text>'});
-    if (sum < total) svg+='<text x="204" y="'+(46+sum/total*548+22)+'" class="svg-small">'+(total-sum)+' panels: no groups</text>';
-    if (plan.motorAfterPanel !== null) {const y=46+plan.motorAfterPanel/total*548;svg+='<path d="M102 '+y+'H198" stroke="#ae3042" stroke-width="3"/><circle cx="150" cy="'+y+'" r="6" fill="#fff" stroke="#ae3042" stroke-width="3"/><text x="16" y="'+Math.min(623,y+22)+'" class="svg-motor">Motor after panel '+plan.motorAfterPanel+'</text>'}
-    svg+='<text x="150" y="623" text-anchor="middle" class="svg-small">'+total+' panel positions · North → South</text></svg>';
-    return (!plan.panelsKnown?'<p class="plan-notice">Incomplete panel instructions</p>':'')+svg+'<div class="plan-diagram-legend">'+plan.panelGroups.map((g,i)=>'<div><strong>Group '+(i+1)+'</strong>'+typeBadge(g.typeId)+'</div>').join('')+'</div>'+(plan.motorAfterPanel===null?'<p class="hint">Motor position has not been supplied.</p>':'');
+    const sum=plan.panelGroups.reduce((value,g)=>value+g.quantity,0),total=plan.panelCount||sum;
+    if(!total||!plan.panelGroups.length)return '<div class="plan-no-diagram"><strong>Panel layout is awaiting information</strong><p>Add panel groups, quantities and directions in the constructor.</p></div>';
+    const geometry=mapRecord(plan),validPoint=p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite);
+    let ordinal=1;
+    const sourceGroups=plan.panelGroups.map(group=>{const first=ordinal;ordinal+=group.quantity;return geometry?.groups?.find(g=>g.first===first&&g.last===ordinal-1);});
+    const mapped=geometry?.panelCount===plan.panelCount&&validPoint(geometry.north)&&validPoint(geometry.south)&&sourceGroups.every(g=>g&&validPoint(g.north)&&validPoint(g.south));
+    const dx=mapped?geometry.south[0]-geometry.north[0]:0,dy=mapped?geometry.south[1]-geometry.north[1]:0,length=dx*dx+dy*dy;
+    const position=p=>Math.max(0,Math.min(1,((p[0]-geometry.north[0])*dx+(p[1]-geometry.north[1])*dy)/length));
+    const located=mapped&&length>0;
+    const action=(id,label)=>' role="button" tabindex="0" data-action="plan-diagram-item" data-id="'+id+'" aria-label="'+esc(label)+'"';
+    let index=0,svg=svgStart('Installation scheme for row '+plan.rowNumber+', numbered north to south').replace('role="img"','role="group"');
+    svg+='<text x="180" y="26" text-anchor="middle" class="svg-title">Row '+esc(plan.rowNumber)+'</text><text x="54" y="26" text-anchor="middle" class="svg-small">West</text><text x="306" y="26" text-anchor="middle" class="svg-small">East</text><rect x="142" y="46" width="76" height="548" rx="4" fill="#e9eef3" stroke="#8b9cae"/>';
+    plan.panelGroups.forEach((group,i)=>{
+      const first=index+1,y=46+(located?position(sourceGroups[i].north):index/total)*548;index+=group.quantity;
+      const end=46+(located?position(sourceGroups[i].south):index/total)*548,height=Math.max(5,end-y),middle=y+height/2;
+      svg+='<g'+action('group-'+i,'Group '+(i+1)+', panels '+first+' to '+index+', '+direction(group.positiveSide))+'><rect x="142" y="'+y+'" width="76" height="'+height+'" fill="url(#plan-panel-lines)"'+(diagramItem==='group-'+i?' stroke="#00875b" stroke-width="3"':'')+'/><rect x="142" y="'+y+'" width="5" height="'+height+'" fill="'+colorValue(typeById(group.typeId)?.color)+'"/><text x="132" y="'+(y+16)+'" text-anchor="end" class="svg-label">'+first+'–'+index+'</text><text x="180" y="'+(middle+5)+'" text-anchor="middle" class="svg-pallet-row-direction">'+(group.positiveSide==='N'?'↑ + N':group.positiveSide==='S'?'↓ + S':'? +')+'</text><text x="228" y="'+(y+16)+'" class="svg-small">Group '+(i+1)+'</text></g>';
+    });
+    if(sum<total)svg+='<text x="228" y="'+(46+sum/total*548+22)+'" class="svg-small">'+(total-sum)+' pending</text>';
+    if(plan.motorAfterPanel!==null){const motorPoint=geometry?.drive?.point,y=46+(located&&geometry.drive?.after===plan.motorAfterPanel&&validPoint(motorPoint)?position(motorPoint):plan.motorAfterPanel/total)*548;svg+='<g'+action('motor','Motor after panel '+plan.motorAfterPanel)+'><rect x="137" y="'+(y-20)+'" width="86" height="40" fill="transparent"/><path d="M135 '+y+'H225" stroke="#ae3042" stroke-width="3"/><circle cx="180" cy="'+y+'" r="6" fill="#fff" stroke="#ae3042" stroke-width="3"/><text x="228" y="'+(y+4)+'" class="svg-motor">Motor · '+plan.motorAfterPanel+'</text></g>';}
+    if(located)plan.dampers.forEach((d,i)=>{const post=geometry.posts?.find(p=>p.post===d.post&&p.side===d.side);if(!validPoint(post?.point))return;const x=d.side==='E'?306:54,y=46+position(post.point)*548;svg+='<g'+action('damper-'+i,'Damper post '+d.post+', '+(d.side==='E'?'East':'West'))+'><path d="M'+(d.side==='E'?220:140)+' '+y+'H'+x+'" stroke="#00875b" stroke-width="2" stroke-dasharray="3 3"/><rect x="'+(x-18)+'" y="'+(y-15)+'" width="36" height="30" rx="7" fill="#e0f6eb" stroke="#00875b" stroke-width="2"/><text x="'+x+'" y="'+(y+4)+'" text-anchor="middle" class="svg-damper">'+d.post+' '+d.side+'</text></g>';});
+    svg+='<text x="180" y="623" text-anchor="middle" class="svg-small">'+total+' panel positions · North → South</text></svg>';
+    const controls='<div class="plan-element-actions" aria-label="Installation element details">'+plan.panelGroups.map((g,i)=>btn('Group '+(i+1),'plan-diagram-item','secondary','group-'+i)).join('')+(plan.motorAfterPanel!==null?btn('Motor','plan-diagram-item','secondary','motor'):'')+plan.dampers.map((d,i)=>btn('Post '+d.post+' '+d.side,'plan-diagram-item','secondary','damper-'+i)).join('')+'</div>';
+    return (!plan.panelsKnown?'<p class="plan-notice">Incomplete panel instructions</p>':'')+'<p class="hint">Tap a group, motor or damper for details. Green post markers are dampers; the red line is the motor.</p>'+svg+(plan.motorAfterPanel===null?'<p class="hint">Motor position has not been supplied.</p>':'')+(!located?'<p class="plan-notice">Post placement on this scheme is unavailable. Use the post buttons or Dampers view; post and panel numbers are separate.</p>':'')+controls+elementDetails(plan);
   }
   function damperDiagram(plan) {
     if (!plan.dampers.length) return '<div class="plan-no-diagram"><strong>'+(plan.dampersKnown?'No dampers required':'Damper layout is awaiting information')+'</strong><p>Set the post number and East/West side for each damper in the constructor.</p></div>';
@@ -290,7 +325,14 @@ export function createRowPlansFeature(api) {
     return svg+'<p class="hint">'+alignmentNote+'</p><p class="plan-pallet-label-key"><span class="plan-pallet-key-label" aria-hidden="true"></span>Label: left when facing the positive connector.</p><p class="hint">+ North → label on the left. + South → label on the right. Pallet colour follows the panel type.</p>'+uncertain;
   }
   function palletDiagram(plan) {
-    return palletPairControls(plan)+automaticPalletSummary(plan)+automaticPalletDiagram(plan);
+    return palletPairControls(plan)+automaticPalletSummary(plan)+btn('Driver view ↗','plan-driver','primary')+automaticPalletDiagram(plan);
+  }
+
+  function drawDriver(){
+    const plan=planById(selectedRow);
+    if(!plan){renderPage('Pallet placement','<section class="empty"><h2>Row plan is unavailable</h2>'+btn('View row plans','plan-list')+'</section>');return;}
+    const neighbor=palletNeighbor(plan),layout=automaticPalletLayout(plan,neighbor);
+    api.draw('<section class="plan-driver" aria-label="Pallet driver view"><header class="plan-driver-heading"><div><p class="eyebrow">'+esc(plan.field)+' · Pallet placement</p><h1 tabindex="-1">Rows '+esc(plan.rowNumber)+(neighbor?' / '+esc(neighbor.rowNumber):'')+'</h1></div>'+btn('← Back','plan-driver-close','secondary')+'</header><div class="plan-driver-scroll">'+palletPairControls(plan,true)+'<div class="plan-driver-summary"><strong>'+(layout.error?'Choose two rows':layout.pallets.length+' pallets')+'</strong><span>'+(layout.error?'':layout.totalPanels+' panels · 36 per pallet')+'</span></div><p class="plan-driver-compass">↑ N · North <span>Count North → South · S ↓</span></p>'+automaticPalletDiagram(plan)+'</div><footer class="plan-driver-footer"><strong>Label on the left when facing +</strong><span>+ North: left · + South: right</span></footer></section>');
   }
 
   function blankPlan() {
@@ -360,7 +402,7 @@ export function createRowPlansFeature(api) {
       if (currentScreen==='rowPlanEdit') {
         const preview = typeof document!=='undefined' && document.querySelector('#plan-pallet-preview');
         if (preview) preview.innerHTML=palletConstructorPreview(draft);
-      } else if (currentScreen==='rowPlan') render('rowPlan');
+      } else if (['rowPlan','rowPalletDriver'].includes(currentScreen)){render(currentScreen);if(typeof document!=='undefined')document.querySelector('[data-pallet-neighbor]')?.focus({preventScroll:true});}
       return true;
     }
     if (currentScreen!=='rowPlanEdit' || !draft || !/^(field|rowNumber|panelCount|panelTypeId|motorAfterPanel|groupQuantity_\d+|groupSide_\d+|groupType_\d+)$/.test(el.name || '')) return false;
@@ -376,7 +418,7 @@ export function createRowPlansFeature(api) {
     currentScreen=screen;
     if(screen!=='rowPlans'||listMode!=='map')siteMap?.hide();
     if(!writable()&&['rowPlanEdit','panelTypeEdit','rowPlanImport'].includes(screen)){renderPage('Viewing only','<section class="card"><p>This account has read-only access.</p></section>');return;}
-    ({rowPlans:drawList,rowPlan:drawPlan,rowPlanEdit:drawEdit,panelTypes:drawTypes,panelTypeEdit:drawTypeEdit,rowPlanImport:drawImport}[screen] || drawList)();
+    ({rowPlans:drawList,rowPlan:drawPlan,rowPalletDriver:drawDriver,rowPlanEdit:drawEdit,panelTypes:drawTypes,panelTypeEdit:drawTypeEdit,rowPlanImport:drawImport}[screen] || drawList)();
   }
   async function handleAction(action,id) {
     if (!action.startsWith('plan-')) return false;
@@ -388,7 +430,11 @@ export function createRowPlansFeature(api) {
     else if (action==='plan-list-mode') {if(['list','map'].includes(id))listMode=id;render('rowPlans');}
     else if (action==='plan-show-map') {const plan=planById(id);if(plan){field=plan.field;query='';listMode='map';mapFeature()?.selectRow(mapRecord(plan));api.navigate('rowPlans');}}
     else if (action==='plan-list') api.navigate('rowPlans');
-    else if (action==='plan-row') {selectedRow=id;palletNeighborId=null;tab='plan';mode='panels';api.navigate('rowPlan');}
+    else if (action==='plan-row') openRow(id);
+    else if (action==='plan-driver') {if(planById(selectedRow)){tab='diagram';mode='pallets';api.navigate('rowPalletDriver');}}
+    else if (action==='plan-driver-close') {api.navigate('rowPlan');if(typeof document!=='undefined'){document.querySelector('.plan-section-tabs')?.scrollIntoView({block:'start'});document.querySelector('[data-action="plan-driver"]')?.focus({preventScroll:true});}}
+    else if (action==='plan-diagram-item') {diagramItem=id;render('rowPlan');if(typeof document!=='undefined'){document.querySelector('#plan-element-details')?.scrollIntoView({block:'nearest'});document.querySelector('#plan-element-details')?.focus({preventScroll:true});}}
+    else if (action==='plan-diagram-close') {const previous=diagramItem;diagramItem=null;render('rowPlan');if(typeof document!=='undefined')document.querySelectorAll('[data-action="plan-diagram-item"]').forEach(el=>{if(el.dataset.id===previous)el.focus({preventScroll:true});});}
     else if (action==='plan-new') startEdit(null);
     else if (action==='plan-edit') {selectedRow=id || selectedRow;startEdit(selectedRow);}
     else if (action==='plan-types') {if(id==='settings'){teamContext=null;parent={screen:'settings',id:null};typeParent='settings';}else typeParent='rowPlans';selectedType=null;api.navigate('panelTypes');}
@@ -450,7 +496,7 @@ export function createRowPlansFeature(api) {
         const latest=typeById(selectedType);if(latest)typeBase=copy(latest);
       } else if(screen==='rowPlanImport') importPreview=null;
     },
-    back(screen) {if(screen==='rowPlans')return parent;if(screen==='rowPlan')return {screen:'rowPlans',id:null};if(screen==='rowPlanEdit')return {screen:editBase?'rowPlan':'rowPlans',id:null};if(screen==='panelTypeEdit')return {screen:'panelTypes',id:null};if(screen==='panelTypes')return {screen:typeParent,id:null};if(screen==='rowPlanImport')return {screen:'rowPlans',id:null};return null;},
+    back(screen) {if(screen==='rowPlans')return parent;if(screen==='rowPlan')return {screen:'rowPlans',id:null};if(screen==='rowPalletDriver')return {screen:'rowPlan',id:null};if(screen==='rowPlanEdit')return {screen:editBase?'rowPlan':'rowPlans',id:null};if(screen==='panelTypeEdit')return {screen:'panelTypes',id:null};if(screen==='panelTypes')return {screen:typeParent,id:null};if(screen==='rowPlanImport')return {screen:'rowPlans',id:null};return null;},
     navDestination:screen=>teamContext?'today':['panelTypes','panelTypeEdit'].includes(screen)&&typeParent==='settings'?'settings':'rows',
     openTeam(team) {teamContext=copy(team);parent={screen:'team',id:team.id};field=team.field;query='';api.navigate('rowPlans');}
   };

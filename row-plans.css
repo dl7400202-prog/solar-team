@@ -110,6 +110,41 @@
 .plan-svg .svg-pallet-row-direction{font-size:12px;font-weight:800;fill:#fff}
 .plan-pallet-preview-details{margin-top:16px}
 .plan-pallet-preview-details summary{font-size:14px;font-weight:700;padding:10px 0}
+.plan-resume{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:64px;text-align:left;background:#edf8f3;border:1px solid #cde7d9;padding:12px 14px;border-radius:12px;margin:10px 0 12px;color:var(--green-dark)}
+.plan-resume small{display:block;font-size:11px;color:var(--muted)}
+.plan-resume strong{display:block;font-size:15px;margin-top:3px}
+.plan-resume>span:last-child{font-size:22px}
+.plan-driver{position:fixed;inset:0;z-index:6;background:#f6f9fb;display:flex;flex-direction:column;max-width:900px;margin:auto;height:100dvh}
+.plan-driver-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border-bottom:1px solid var(--line);padding:calc(12px + env(safe-area-inset-top)) 16px 12px;flex:0 0 auto}
+.plan-driver-heading .eyebrow{font-size:11px;margin:0 0 4px}
+.plan-driver-heading h1{font-size:24px;margin:0;line-height:1.2;letter-spacing:-.6px}
+.plan-driver-heading button{width:auto;min-width:80px;min-height:44px;margin:0;font-size:14px}
+.plan-driver-scroll{overflow:auto;overscroll-behavior:contain;padding:0 16px 16px;flex:1;min-height:0}
+.plan-driver-scroll .plan-pallet-pair{margin:14px 0}
+.plan-driver-scroll select{font-size:16px}
+.plan-driver-summary{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:6px;background:#edf8f3;border:1px solid #cde7d9;border-radius:12px;padding:12px 14px}
+.plan-driver-summary strong{font-size:24px;color:var(--green-dark)}
+.plan-driver-summary span{font-size:12px;color:var(--muted)}
+.plan-driver-compass{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;font-weight:750;color:var(--green-dark);margin:14px 0 8px}
+.plan-driver-compass span{font-size:11px;color:var(--muted);font-weight:500}
+.plan-driver .plan-svg{max-width:550px;margin:0 auto 12px;background:#edf2f6}
+.plan-driver .svg-pallet-row-direction{font-size:15px}
+.plan-driver .svg-pallet-label{stroke-width:1.5}
+.plan-driver .plan-pallet-label-key{display:none}
+.plan-driver-footer{flex:0 0 auto;background:#fff;border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));text-align:center}
+.plan-driver-footer strong{display:block;font-size:14px}
+.plan-driver-footer span{display:block;font-size:12px;color:var(--muted);margin-top:4px}
+.plan-element-details{border:1px solid #b9d8c8;border-radius:12px;padding:14px;margin:12px 0;background:#f1faf5;scroll-margin-top:75px}
+.plan-element-details h3{font-size:16px;margin:0 0 8px}
+.plan-element-details .plan-type-badge{margin:8px 0}
+.plan-element-details p{font-size:13px;line-height:1.5}
+.plan-element-details button{margin:8px 0 0;min-height:44px}
+.plan-svg [role=button]{cursor:pointer;outline:none}
+.plan-svg [role=button]:focus-visible>rect:first-of-type{stroke:#00875b;stroke-width:3}
+.plan-element-actions{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+.plan-element-actions button{width:auto;flex:1;min-height:44px;font-size:12px;padding:10px}
+.plan-svg .svg-damper{font-size:10px;font-weight:800;fill:#006d49}
+@media(max-width:380px){.plan-driver-heading{padding-left:12px;padding-right:12px}.plan-driver-heading h1{font-size:21px}.plan-driver-scroll{padding-left:12px;padding-right:12px}.plan-driver-compass{font-size:12px}}
 @media(min-width:900px){.plan-list,.plan-type-list{grid-template-columns:1fr 1fr}.plan-list .empty{grid-column:1/-1}.plan-diagram-legend{grid-template-columns:1fr 1fr}.plans-feature .plan-diagram{max-width:650px;margin-left:auto;margin-right:auto}}
 @media(max-width:380px){.plan-detail-list .row{flex-direction:column;gap:6px}.plan-row-counts,.plan-summary{gap:8px}.plan-summary strong{font-size:13px}.plan-mode-tabs button{font-size:12px;padding:10px 6px}.plan-facts,.plan-source dl{grid-template-columns:1fr;gap:6px}.plan-facts dd,.plan-source dd{margin-bottom:8px}}
 @media(min-width:700px){.plan-search-line{grid-template-columns:150px minmax(0,1fr) 72px}.plan-search-line select{font-size:16px}.plan-section-tabs button{font-size:14px}.plan-overview .plan-summary strong{font-size:17px}}

@@ -1,10 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.105.0';
 
 const supabase = createClient('https://oimiygdkrnsjzlivwafs.supabase.co','sb_publishable_WKPV0lAUCl1Lr53UujCR3g_zlQay4DS');
-import {createRowPlansFeature} from './row-plans.js?v=field-ui-20261009-1';
-import {createSiteMap} from './site-map.js?v=field-ui-20261009-1';
-import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=field-ui-20261009-1';
-import {googleMapsConfig} from './google-maps-config.js?v=field-ui-20261009-1';
+import {createRowPlansFeature} from './row-plans.js?v=field-design-20261010-1';
+import {createSiteMap} from './site-map.js?v=field-design-20261010-1';
+import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=field-design-20261010-1';
+import {googleMapsConfig} from './google-maps-config.js?v=field-design-20261010-1';
 let googleMapsLoader=null;
 const defaultJobGroups=['Team Leads','Technicians','Mechanics'];
 const seed = {people:[],fields:['North','South'],workTypes:['Solar panel installation','Bolt tightening','Bracket preparation','Truck unloading'],workUnits:{'Truck unloading':'loads'},jobGroups:defaultJobGroups,archivedJobGroups:[],teams:[],assignmentHistory:[],rowPlans:[],rowPlanHistory:[],panelTypes:[],defaultTeamLeaderId:null};
@@ -77,7 +77,7 @@ history:'<path d="M3 12a9 9 0 1 0 3-6.7M3 3v5h5M12 7v5l3 2"/>',
 settings:'<path d="M4 21V14M4 10V3M12 21V12M12 8V3M20 21V16M20 12V3M1 14h6M9 8h6M17 16h6"/>'};
 function icon(k){return '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+iconShapes[k]+'</svg>'}
 function nav(){const active=rowPlansFeature.hasScreen(screen)?rowPlansFeature.navDestination(screen):screen==='defaultLeader'?'settings':screen==='staffing'?'today':['person','personEdit','personNew'].includes(screen)?'people':['directory','directoryEdit'].includes(screen)?'settings':['team','teamEdit','record'].includes(screen)?origin:screen;return '<nav class="bottom" aria-label="Main navigation">'+['today','rows','people','history','settings'].map(k=>'<button data-action="nav" data-id="'+k+'" '+(active===k?'aria-current="page"':'')+'>'+icon(k)+'<span>'+k[0].toUpperCase()+k.slice(1)+'</span></button>').join('')+'</nav>'}
-function draw(content){$('#app').innerHTML=(accessRole==='viewer'?'<p class="viewer-mode" role="status">Viewing only · Shared workspace</p>':'')+content+'<div id="feedback" role="alert" tabindex="-1" hidden></div><p id="sync-status" class="sync" role="status">'+esc(syncText)+'</p>'+nav();if(!canEdit())document.querySelectorAll('#app [data-action]').forEach(el=>{if(editingAction(el.dataset.action,el.dataset.id))el.remove()});dirty=false}
+function draw(content){$('#app').innerHTML=(accessRole==='viewer'?'<p class="viewer-mode" role="status">Viewing only · Shared workspace</p>':'')+content+'<div id="feedback" role="alert" tabindex="-1" hidden></div><p id="sync-status" class="sync" role="status">'+esc(syncText)+'</p>'+(screen==='rowPalletDriver'?'':nav());if(!canEdit())document.querySelectorAll('#app [data-action]').forEach(el=>{if(editingAction(el.dataset.action,el.dataset.id))el.remove()});dirty=false}
 function empty(title,text,action=''){return '<section class="empty"><h2>'+esc(title)+'</h2><p>'+esc(text)+'</p>'+action+'</section>'}
 function render(focus=false){rowPlansFeature.suspendIfHidden?.(user&&ready?screen:null);if(!user){drawAuth();return}if(!ready){$('#app').innerHTML=header('Shared workspace')+'<section class="card"><p role="status">'+esc(accessMessage)+'</p>'+btn('Retry','retry','primary')+btn('Sign out','logout')+'</section>';return}
 if(rowPlansFeature.hasScreen(screen))rowPlansFeature.render(screen);else ({defaultLeader:drawDefaultLeader,today:drawToday,staffing:drawStaffing,people:drawPeople,history:drawHistory,settings:drawSettings,create:drawCreate,team:drawTeam,teamEdit:drawTeamEdit,record:drawRecord,person:drawPerson,personEdit:drawPersonEdit,personNew:drawPersonEdit,directory:drawDirectory,directoryEdit:drawDirectoryEdit}[screen]||drawToday)();
@@ -180,6 +180,7 @@ if(action==='clearHistory'){historyFilter={date:'',field:'',work:'',person:''};r
 if(action==='reopen'){const t=team(id);if(!window.confirm('Reopen this team for editing?'))return;if(await patchRecord('team_patch',t,{closed:false,status:'IN_PROGRESS'})){render();toast('Team reopened')}return}
 if(action==='latest'){if(!window.confirm('Discard this draft and load the latest saved record?'))return;dirty=false;await loadCloud(user);if(ready&&rowPlansFeature.hasScreen(screen)){rowPlansFeature.reload(screen);render()}return}
 if(action==='access'){try{const {data,error}=await supabase.from('solar_members').select('email,access_role').order('added_at');if(error)throw error;$('#access-panel').innerHTML='<h3>Accounts with access</h3>'+data.map(m=>'<p>'+esc(m.email)+' · '+(m.access_role==='viewer'?'Viewing only':'Editing access')+'</p>').join('')}catch{feedback('Could not load workspace accounts. Try again.')}}}
+document.addEventListener('keydown',e=>{const target=e.target.closest?.('svg [data-action="plan-diagram-item"]');if(target&&['Enter',' '].includes(e.key)&&!saving){e.preventDefault();act(target.dataset.action,target.dataset.id).catch(()=>feedback('This action could not finish. Please try again.'));}});
 document.addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(b&&!saving)act(b.dataset.action,b.dataset.id).catch(()=>feedback('This action could not finish. Please try again.'))});
 document.addEventListener('submit',e=>{if(e.target.matches('form[data-form]'))submitForm(e).catch(()=>{busy(false);feedback('Not saved. Your entries are still here. Please try again.')})});
 function filterMemberRows(){const query=$('[data-search="members"]')?.value.toLowerCase()||'',group=$('[data-filter="member-group"]')?.value||'';let visible=0;document.querySelectorAll('[data-person-search]').forEach(row=>{row.hidden=!row.dataset.personSearch.includes(query)||(group&&row.dataset.personGroup!==group);if(!row.hidden)visible++});$('#member-empty').hidden=visible>0}
