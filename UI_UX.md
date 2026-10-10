@@ -16,6 +16,17 @@ Pallets includes Driver view: a full-viewport screen with a fixed row header, sc
 
 The Rows hub offers Continue where you left off after opening a row. Only its row-plan ID is saved in local browser storage. Deleted or unavailable rows do not produce a resume shortcut; disabled storage does not prevent browsing. The shortcut is local to that browser and never stores GPS fixes or synchronizes users' viewing history.
 
-The interface uses the existing colour system and semantic controls. Main navigation, section controls, map controls and disclosure targets are at least 44 CSS pixels high. Source details remain keyboard accessible. Reduced-motion preferences are preserved. No new imagery, font downloads or UI dependencies are added; Google Maps still loads on demand.
+The interface uses the existing colour system and semantic controls. Main navigation, section controls, map controls and disclosure targets are at least 44 CSS pixels high. Source details remain keyboard accessible. Reduced-motion preferences are preserved. Google Maps loads on demand; the GeoDanmark aerial crop loads on explicit selection or park download. The Supabase client is pinned and served locally so a saved park can start without its former external module host.
 
-This update does not change installation calculations, palette assignments, row specifications, team membership, authentication or database data. Pallet labels still follow the positive connector, capacity is 36, carryover is excluded and paired rows align at their motors.
+Installation calculations, palette assignments, row specifications, team membership and existing online authorization remain unchanged. Pallet labels still follow the positive connector, capacity is 36, carryover is excluded and paired rows align at their motors.
+
+
+## Full-screen field mode and saved park
+
+Rows → Map → Field mode opens a full-viewport map without the main navigation. North stays at the top. Field selection, row search, Worker / Driver, map view, GPS, zoom and an explicit Exit control stay reachable. Landscape screens use a compact top bar and side row card. A selected row shows its motor and imported damper positions; these details stay hidden for unrelated rows at overview scale. Driver opens the existing consecutive-pair pallet view and retains its two-row arrows.
+
+Offline park shows the estimated data-and-photo size before downloading, then the saved time and workspace revision. The saved package includes all three fields, row geometry, panel identities and polarity, motors, dampers, automatic pallet instructions, and the configured GeoDanmark aerial crop. It contains no HR records or GPS history. Saving completes only after the local application shell and the image hash have been verified and one IndexedDB transaction commits. A failed refresh retains the prior package. Google Satellite always needs a connection and is never downloaded.
+
+Open saved park is available from the sign-in screen or a failed access check, including after closing and restarting the browser. This local copy is explicitly Viewing only; it cannot create or edit records or access staffing. Reconnect rechecks the existing workspace authorization before returning to online data. A confirmed loss of membership clears the copy; Sign out removes it. Exit saved park retains it for a later visit. Download separately on each device. Browser eviction can remove saved data, so readiness is verified again at startup.
+
+Aerial displays the linked GeoDanmark / CC BY 4.0 attribution and Photo 2025. The photo shows the terrain before the present construction state; row overlays come from the authenticated 2026 project. Phone GPS is requested only by My position and stays in memory. Real-phone GPS and cold starts on the user's iPhone still require an on-site check.

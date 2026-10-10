@@ -23,3 +23,14 @@ The nearest row centreline is informational. Phone GPS accuracy can exceed the s
 ## Verification
 
 Run `node --test tests/google-map.test.cjs tests/site-map.test.cjs tests/row-plans.test.cjs tests/legacy-ux.test.cjs`. Browser verification covers authenticated viewer access, source searches and card navigation, projected marker updates, accuracy and following, permission failures, hidden/closed maps, zero writes and mobile widths. Native browser geolocation is exercised with controlled test positions. Google boundary checks cover on-demand loading, missing configuration, timeout/network/auth failures, confirmed/unknown CRS, field filters, row selection and late callbacks. These controlled checks do not establish live Google billing readiness. On-site alignment and real-phone accuracy still require confirmation against the project and a known row.
+
+
+## Offline field package
+
+The original workbook confirms EPSG:25832. Rows → Map → Field mode provides a full-viewport Worker / Driver view. Aerial uses the GeoDanmark crop in source EPSG:25832 directly; the pixel bounds are kept in authenticated siteMap.offlineImagery metadata. The public JPEG contains only licensed public aerial photography. The Datafordeleren key and all source row coordinates remain outside the public repository. Attribution and the 2025 imagery year are displayed on screen; map-assets/LICENSE.md records the source, crop/resampling and hash.
+
+Download park writes the whitelisted field data and verified JPEG Blob atomically to IndexedDB after the entire local app shell is cached. The app uses a pinned local Supabase SDK, avoiding a network dependency during a cold offline start. The service worker caches only listed same-origin shell assets; it does not cache third-party imagery or authenticated API responses. A package hash and separate photo hash detect incomplete downloads. Old packages survive network and storage failures during refresh.
+
+The saved park opens in a local read-only mode without granting server access. Staffing and edits remain unavailable. Dates and revision identify the snapshot. Reconnect performs the existing invitation check; confirmed membership loss clears the copy. Signing out removes the package, while Exit retains it. Browser storage is device-local and can be evicted. GPS is still foreground-only and device dependent. Google Satellite is disabled for the saved park.
+
+Run the test script with pnpm test, or node --test tests/*.test.cjs after installing the locked development dependency. Test IndexedDB restart, image validation, failed refresh and complete-shell readiness as well as existing driver, row, authorization and GPS behavior. A browser cold-start check must stop the local server after downloading, then reopen the app and verify Aerial, a row card and its pallet scheme. This is separate from the still-required real iPhone/GPS field check.
