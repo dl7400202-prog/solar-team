@@ -274,7 +274,7 @@ export function createRowPlansFeature(api) {
 
   function diagram(plan) {
     const content = mode==='panels'?panelDiagram(plan):mode==='dampers'?damperDiagram(plan):palletDiagram(plan);
-    return '<section class="card plan-diagram">'+compass+content+'<p class="hint">Schematic only. Distances are not to scale. Panel ordinals and post ordinals are independent.</p></section>';
+    return '<section class="card plan-diagram">'+compass+content+'<p class="hint">'+(mode==='panels'?'Schematic only. Distances are not to scale.':'Schematic only. Distances are not to scale. Panel ordinals and post ordinals are independent.')+'</p></section>';
   }
   function svgStart(title, height = 660) {
     return '<svg class="plan-svg" viewBox="0 0 360 '+height+'" role="img" aria-label="'+esc(title)+'" xmlns="http://www.w3.org/2000/svg">';
@@ -355,11 +355,10 @@ export function createRowPlansFeature(api) {
     });
     if(sum<total)svg+='<text x="228" y="'+(46+sum/total*548+22)+'" class="svg-small">'+(total-sum)+' pending</text>';
     if(motorY!==null){const mark=motorMark(motor),y=mark.y;svg+='<g'+action('motor','Motor after panel '+plan.motorAfterPanel)+'><rect x="108" y="'+(y-20)+'" width="32" height="40" fill="transparent"/>'+motorClearance(142,motorY,76,548/total,46,plan.rowNumber)+'<path class="svg-row-motor-line" d="M126 '+y+'H225" stroke="#ae3042" stroke-width="'+mark.stroke+'"/><circle class="svg-row-motor-marker" cx="126" cy="'+y+'" r="6" fill="#fff" stroke="#ae3042" stroke-width="3"/><text x="228" y="'+(y+4)+'" class="svg-motor">Motor · after '+plan.motorAfterPanel+'</text></g>';}
-    if(located)plan.dampers.forEach((d,i)=>{const post=geometry.posts?.find(p=>p.post===d.post&&p.side===d.side);if(!validPoint(post?.point))return;const x=d.side==='E'?306:54,y=46+position(post.point)*548;svg+='<g'+action('damper-'+i,'Damper post '+d.post+', '+(d.side==='E'?'East':'West'))+'><path d="M'+(d.side==='E'?220:140)+' '+y+'H'+x+'" stroke="#00875b" stroke-width="2" stroke-dasharray="3 3"/><rect x="'+(x-18)+'" y="'+(y-15)+'" width="36" height="30" rx="7" fill="#e0f6eb" stroke="#00875b" stroke-width="2"/><text x="'+x+'" y="'+(y+4)+'" text-anchor="middle" class="svg-damper">'+d.post+' '+d.side+'</text></g>';});
     svg+='<text x="180" y="623" text-anchor="middle" class="svg-small">'+total+' panel positions · North → South</text></svg>';
-    const controls='<div class="plan-element-actions" aria-label="Installation element details">'+plan.panelGroups.map((g,i)=>btn('Group '+(i+1),'plan-diagram-item','secondary','group-'+i)).join('')+(plan.motorAfterPanel!==null?btn('Motor','plan-diagram-item','secondary','motor'):'')+plan.dampers.map((d,i)=>btn('Post '+d.post+' '+d.side,'plan-diagram-item','secondary','damper-'+i)).join('')+'</div>';
+    const controls='<div class="plan-element-actions" aria-label="Installation element details">'+plan.panelGroups.map((g,i)=>btn('Group '+(i+1),'plan-diagram-item','secondary','group-'+i)).join('')+(plan.motorAfterPanel!==null?btn('Motor','plan-diagram-item','secondary','motor'):'')+'</div>';
     const counts=split?'<div class="plan-motor-counts" aria-label="Group '+(split.index+1)+' panel counts around the motor"><div><small>Group '+(split.index+1)+' · Before motor</small><strong>'+split.before+' panels · '+split.first+'–'+plan.motorAfterPanel+'</strong></div><div><small>Group '+(split.index+1)+' · After motor</small><strong>'+split.after+' panels · '+(plan.motorAfterPanel+1)+'–'+split.last+'</strong></div></div>':'';
-    return (!plan.panelsKnown?'<p class="plan-notice">Incomplete panel instructions</p>':'')+'<p class="hint">North → South · Tap an element for details.</p>'+counts+svg+(plan.motorAfterPanel===null?'<p class="hint">Motor position has not been supplied.</p>':'')+(!located?'<p class="plan-notice">Post placement on this scheme is unavailable. Use the post buttons or Dampers view; post and panel numbers are separate.</p>':'')+controls+elementDetails(plan);
+    return (!plan.panelsKnown?'<p class="plan-notice">Incomplete panel instructions</p>':'')+'<p class="hint">North → South · Tap an element for details.</p>'+counts+svg+(plan.motorAfterPanel===null?'<p class="hint">Motor position has not been supplied.</p>':'')+controls+elementDetails(plan);
   }
   function damperDiagram(plan) {
     if (!plan.dampers.length) return '<div class="plan-no-diagram"><strong>'+(plan.dampersKnown?'No dampers required':'Damper layout is awaiting information')+'</strong><p>Set the post number and East/West side for each damper in the constructor.</p></div>';
