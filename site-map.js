@@ -48,7 +48,7 @@ export function createLocationTracker({geolocation,secure,aligned,now=()=>Date.n
 const messages={idle:'Location is off. Select My position to enable it.',alignment:'GPS alignment needs the coordinate system from the original project. Rows are shown in source coordinates.',locating:'Finding your position…',watching:'Live position',paused:'Location paused while this map is hidden.',stale:'Location is out of date. Waiting for a fresh position.',denied:'Location permission was denied. Allow location access in browser or phone settings, then try again.',timeout:'No fresh position arrived. Move to an open area and try again.',unavailable:'Your position is unavailable. Check location settings and try again.',unsupported:'This device does not support browser location.',insecure:'Location requires an HTTPS connection.'};
 export function createSiteMap(api) {
   const esc=api.esc,db=()=>api.getDb(),source=()=>db().siteMap;
-  let root=null,svg=null,abort=null,resize=null,timer=null,view=null,origin=null,filter='',query='',selected=null,pendingRow=null,pendingSearch=false,follow=false,visible=false,mode='plan',satelliteState='idle';
+  let root=null,svg=null,abort=null,resize=null,timer=null,view=null,origin=null,filter='',query='',selected=null,pendingRow=null,pendingSearch=false,follow=false,visible=false,mode=api.hasImagery?.()?'aerial':'plan',satelliteState='idle';
   const geometry=()=>Array.isArray(source()?.rows)?source().rows.filter(r=>Number.isSafeInteger(r.rowNumber)&&r.rowNumber>=0&&typeof r.field==='string'&&point(r.north)&&point(r.south)):[];
   let planDocument=null,planIndex=new Map();
   const planFor=row=>{const current=db();if(current!==planDocument){planDocument=current;planIndex=new Map((current.rowPlans||[]).map(p=>[p.field+'\0'+p.rowNumber,p]));}return planIndex.get(row.field+'\0'+row.rowNumber);};
@@ -64,26 +64,28 @@ export function createSiteMap(api) {
     if(!state.enabled)follow=false;
     paintLocation();
   }});
-  const satellite=api.createSatellite?.({toLocation:p=>sourcePointToLocation(p,source()?.crs,projection()),colourFor:(row,index)=>{const typeId=planFor(row)?.panelGroups?.[index]?.typeId;return (db().panelTypes||[]).find(t=>t.id===typeId)?.color;},onSelect:row=>select(row),onGesture:()=>{follow=false;paintLocation();},onStatus:state=>{
+  let satellite=null;
+  function getSatellite(){return satellite||(satellite=api.createSatellite?.({toLocation:p=>sourcePointToLocation(p,source()?.crs,projection()),colourFor:(row,index)=>{const typeId=planFor(row)?.panelGroups?.[index]?.typeId;return (db().panelTypes||[]).find(t=>t.id===typeId)?.color;},onSelect:row=>select(row),onGesture:()=>{follow=false;paintLocation();},onStatus:state=>{
     satelliteState=state;if(!root||!visible)return;
     const message=root.querySelector('.site-map-google-message'),canvas=root.querySelector('.site-map-google-canvas');
     if(message){message.hidden=!['loading','error'].includes(state);message.textContent=state==='loading'?'Loading Google Maps…':'Google Maps is temporarily unavailable. Use Row plan or reload this page after Google access is activated.';}
     if(canvas)canvas.hidden=state==='error';
     if(mode==='satellite'&&state==='error'){follow=false;tracker.stop();}
     paintLocation();
-  }});
+  }}));}
   let selectionKey=null,fieldRole='worker',imagery=null,imageryEpoch=0;
   const button=(label,action,extra='')=>'<button type="button" data-map-action="'+action+'" '+extra+'>'+label+'</button>';
-  function imageryNote(text='',credit=false){const note=root?.querySelector('.site-map-imagery-note');if(note){note.innerHTML=credit?'<a href="https://www.geodanmark.dk/home/vejledninger/vilkaar-for-data-anvendelse/" target="_blank" rel="noopener noreferrer">@GeoDanmark</a> · '+esc(text)+' · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>':esc(text);note.hidden=!text;}}
-  async function loadAerial(){const host=root,token=++imageryEpoch;imageryNote('Loading aerial photo…');try{const result=await api.getImagery();if(token!==imageryEpoch||root!==host||!visible||mode!=='aerial')return;imagery=result;imageryNote('Photo '+result.meta.year,true);paint();}catch(error){if(token!==imageryEpoch||root!==host||!visible)return;imagery=null;setMode('plan');imageryNote(error.message||'Aerial photo is unavailable. Use Row plan.');}}
-  function viewButtons(){return '<div class="site-map-view-switch" role="group" aria-label="Map view">'+button('Row plan','view-plan','aria-pressed="'+(mode==='plan')+'"')+(api.hasImagery?.()?button('Aerial','view-aerial','aria-pressed="'+(mode==='aerial')+'"'):'')+(satellite?button('Satellite','view-satellite','aria-pressed="'+(mode==='satellite')+'" '+(api.isOffline?.()?'disabled title="Google satellite needs a connection"':'')):'')+'</div>';}
+  function imageryNote(text='',credit=false){text=api.localiseText?.(text)||text;const note=root?.querySelector('.site-map-imagery-note');if(note){note.innerHTML=credit?'<a href="https://www.geodanmark.dk/home/vejledninger/vilkaar-for-data-anvendelse/" target="_blank" rel="noopener noreferrer">@GeoDanmark</a> · '+esc(text)+' · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>':esc(text);note.hidden=!text;}}
+  async function loadAerial(){const host=root,token=++imageryEpoch;imageryNote('Loading aerial photo…');try{const result=await api.getImagery();if(token!==imageryEpoch||root!==host||!visible||mode!=='aerial')return;imagery=result;imageryNote((api.localiseText?.('Aerial photo')||'Photo')+' '+result.meta.year,true);paint();}catch(error){if(token!==imageryEpoch||root!==host||!visible)return;imagery=null;setMode('plan');imageryNote(error.message||'Aerial photo is unavailable. Use Row plan.');}}
+  function viewButtons(){return '<div class="site-map-view-switch" role="group" aria-label="Map layers">'+button('Scheme','view-plan','aria-pressed="'+(mode==='plan')+'"')+(api.hasImagery?.()?button('Aerial photo','view-aerial','aria-pressed="'+(mode==='aerial')+'"'):'')+(api.createSatellite?button('Google satellite','view-satellite','aria-pressed="'+(mode==='satellite')+'" '+(api.isOffline?.()?'disabled title="Google satellite needs a connection"':'')):'')+'</div>';}
   function html(field='',term='',options={}){
-    if(api.isOffline?.()&&mode==='satellite'){satellite?.destroy();tracker.stop();mode='plan';}
+    if(api.isOffline?.()&&mode==='satellite'){satellite?.destroy();tracker.stop();mode=api.hasImagery?.()?'aerial':'plan';}
     if(filter!==field||query!==term){view=null;selected=null;pendingSearch=true;follow=false;}
     filter=field;query=term;
-    const rows=filtered();
-    const fieldTools=options.fullscreen?'<div class="field-map-roles" aria-label="Field view">'+button('Worker','role-worker','aria-pressed="'+(fieldRole==='worker')+'"')+button('Driver','role-driver','aria-pressed="'+(fieldRole==='driver')+'"')+'</div>':'<button type="button" class="secondary field-map-open" data-action="plan-field-open">⛶ Field mode</button>';
-    return '<section class="site-map card'+(options.fullscreen?' site-map-field':'')+'" aria-label="Site map">'+fieldTools+'<div class="site-map-heading"><div><h2>Site map</h2><small>'+rows.length+' mapped rows · North at the top</small></div>'+button('All rows','fit','class="compact"')+'</div>'+viewButtons()+(!aligned()?'<p class="plan-notice site-map-alignment">GPS alignment awaits the coordinate system from the original project.</p>':'')+'<p class="site-map-imagery-note" role="status" hidden></p><div class="site-map-location-controls">'+button('◎ My position','locate','class="secondary"')+button('Follow me','follow','class="secondary" aria-pressed="false"')+button('Stop location','stop','class="text-button" hidden')+'</div><p class="site-map-status hint" role="status"></p><div class="site-map-stage" data-view="'+mode+'"><div class="site-map-plan" '+(mode!=='satellite'?'':'hidden')+'><div class="site-map-surface"><svg class="site-map-svg" tabindex="0" role="group" aria-label="Row map. Drag to pan, pinch or use plus and minus to zoom." xmlns="http://www.w3.org/2000/svg"></svg><span class="site-map-north" aria-hidden="true">↑<br>N</span><div class="site-map-zoom" aria-label="Map zoom">'+button('+','zoom-in','aria-label="Zoom in"')+button('−','zoom-out','aria-label="Zoom out"')+'</div><div class="site-map-scale" aria-hidden="true"></div></div></div><div class="site-map-google-surface" '+(mode==='satellite'?'':'hidden')+'><div class="site-map-google-canvas" role="region" aria-label="Satellite map"></div><div class="site-map-google-message" role="status">Loading Google Maps…</div></div><div class="site-map-selection" aria-live="polite"></div></div><p class="site-map-nearest hint"></p><details class="site-map-tips"><summary>Map tips & privacy</summary><p class="hint site-map-help">Drag to move · Pinch to zoom · Tap a row to open its details. Distances use the source coordinates. Device location is not saved.</p></details>'+((query&&!searchResults().length)||!rows.length?'<p class="plan-notice">No mapped rows match this search. Clear the filters to find a row.</p>':'')+'</section>';
+    const rows=filtered(),task=api.getWorkMode?.()||'panels';
+    const tasks='<div class="site-map-task-switch" role="group" aria-label="Work mode">'+[['panels','Panels'],['dampers','Dampers'],['pallets','Pallets']].map(([value,label])=>button(label,'work-'+value,'aria-pressed="'+(task===value)+'"')).join('')+'</div>';
+    const layers='<details class="site-map-layers"><summary>Layers & options</summary>'+viewButtons()+tasks+button('Show whole park','fit','class="secondary"')+button('Stop location','stop','class="text-button" hidden')+'<p class="hint">North is at the top. Phone position is not saved.</p></details>';
+    return '<section class="site-map card'+(options.fullscreen?' site-map-field':'')+'" aria-label="Park map"><div class="site-map-mapbar"><small>'+rows.length+' rows</small>'+layers+'</div>'+(!aligned()?'<p class="plan-notice site-map-alignment">GPS alignment awaits the project coordinate system.</p>':'')+'<p class="site-map-imagery-note" role="status" hidden></p><div class="site-map-location-controls">'+button('◎ My position','locate','class="secondary" aria-pressed="false"')+'</div><p class="site-map-status hint" role="status"></p><div class="site-map-stage" data-view="'+mode+'"><div class="site-map-plan" '+(mode!=='satellite'?'':'hidden')+'><div class="site-map-surface"><svg class="site-map-svg" tabindex="0" role="group" aria-label="Row map. Drag to pan, pinch or use plus and minus to zoom." xmlns="http://www.w3.org/2000/svg"></svg><span class="site-map-north" aria-hidden="true">↑<br>N</span><div class="site-map-zoom" aria-label="Map zoom">'+button('+','zoom-in','aria-label="Zoom in"')+button('−','zoom-out','aria-label="Zoom out"')+'</div><div class="site-map-scale" aria-hidden="true"></div></div></div><div class="site-map-google-surface" '+(mode==='satellite'?'':'hidden')+'><div class="site-map-google-canvas" role="region" aria-label="Satellite map"></div><div class="site-map-google-message" role="status">Loading Google Maps…</div></div><div class="site-map-selection" aria-live="polite"></div></div><p class="site-map-nearest hint"></p>'+((query&&!searchResults().length)||!rows.length?'<p class="plan-notice">No mapped rows match this search. Clear the filters to find a row.</p>':'')+'</section>';
   }
   function fit(rows=filtered()){
     const bounds=mapBounds(rows);if(!bounds)return;
@@ -128,26 +130,27 @@ export function createSiteMap(api) {
   function paintSelection(row){
     const host=root.querySelector('.site-map-selection');
     if(!row){host.innerHTML='';selectionKey=null;return;}
-    const plan=planFor(row),type=(db().panelTypes||[]).find(t=>t.id===plan?.panelTypeId),count=plan?.panelCount??row.panelCount;
-    const key=JSON.stringify([row,plan,type,fieldRole]);if(selectionKey===key&&host.firstElementChild)return;selectionKey=key;
-    const groups=(plan?.panelGroups||[]).map(g=>'<span class="site-map-polarity">'+esc(g.quantity)+' '+(g.positiveSide==='N'?'↑ +N':g.positiveSide==='S'?'↓ +S':'? +')+'</span>').join('');
+    const plan=planFor(row),type=(db().panelTypes||[]).find(t=>t.id===plan?.panelTypeId),count=plan?.panelCount??row.panelCount,task=api.getWorkMode?.()||'panels';
+    const key=JSON.stringify([row,plan,type,task]);if(selectionKey===key&&host.firstElementChild)return;selectionKey=key;
     const color=/^#[a-f0-9]{6}$/i.test(type?.color||'')?type.color:'#c5ced7',mixed=new Set((plan?.panelGroups||[]).map(g=>g.typeId)).size>1;
-    const motor=plan?.motorAfterPanel==null?'Pending':'After '+esc(plan.motorAfterPanel);
     const details=(plan?.panelGroups||[]).map((g,i)=>{const t=(db().panelTypes||[]).find(t=>t.id===g.typeId);return '<small>Group '+(i+1)+' · '+esc(t?.description||'Description pending')+' · Current Class '+esc(t?.currentClass||'pending')+' · '+esc(g.sourceToken||'Marking pending')+'</small>';}).join('');
-    host.innerHTML='<section class="site-map-row-card" aria-label="Selected row '+row.rowNumber+'"><div class="site-map-sheet-heading"><div><small>'+esc(row.field)+'</small><h3>Row '+row.rowNumber+'</h3></div>'+button('×','dismiss','class="site-map-sheet-close" aria-label="Close row card"')+'</div><div class="site-map-sheet-type"><span style="background:'+color+'" aria-hidden="true"></span>'+esc(type?.name||'Type pending')+(mixed?' · Mixed types':'')+'</div><div class="site-map-sheet-facts"><div><strong>'+esc(count??'?')+'</strong><small>Panels</small></div><div><strong>'+esc(plan?.damperCount??'?')+'</strong><small>Dampers</small></div><div><strong>'+motor+'</strong><small>Motor · panel</small></div></div>'+(groups?'<div class="site-map-sheet-polarity" aria-label="Panel groups from north to south">'+groups+'</div>':'<small>Panel directions pending</small>')+'<details class="site-map-sheet-details"><summary>IDs & installation details</summary>'+details+'<small>Pile plan row '+esc(row.pilePlanRow??'pending')+' · Motor post '+esc(row.motor?.post??'pending')+' · ID '+esc(row.motor?.id??'pending')+'</small>'+(plan?.dampersKnown?'<small>Dampers: '+plan.dampers.map(d=>esc(d.post)+' '+esc(d.side==='E'?'East':'West')).join(' · ')+'</small>':'')+'</details>'+(plan&&plan.panelCount!==row.panelCount?'<p class="plan-notice">Plan changed since import. Map uses the source layout.</p>':'')+(plan?'<div class="site-map-row-actions">'+(root.classList?.contains('site-map-field')&&fieldRole==='driver'?button('Driver view · Pallets','driver','class="primary"'):button('Open row','open','class="secondary"')+button('Pallets','pallets','class="primary"'))+'</div>':'<small>Installation plan is unavailable.</small>')+'</section>';
+    const pair=task==='pallets'?api.palletSummary?.(row):null;
+    const facts=task==='dampers'?esc(plan?.damperCount??'?')+' dampers · '+(plan?.dampers||[]).map(d=>esc(d.post)+' '+esc(d.side)).join(' · '):task==='pallets'?(pair?.error||!pair?'Pair unavailable':pair.pallets+' pallets · Rows '+row.rowNumber+' / '+pair.right):esc(count??'?')+' panels · '+esc(type?.name||'Type pending')+(mixed?' · Mixed types':'');
+    const label=task==='dampers'?'Open dampers':task==='pallets'?'Open pallets':'Open panels';
+    host.innerHTML=(api.localiseHtml||((value)=>value))('<section class="site-map-row-card" aria-label="Selected row '+row.rowNumber+'"><div class="site-map-sheet-heading"><div><small>'+esc(row.field)+'</small><h3>Row '+row.rowNumber+'</h3></div>'+button('×','dismiss','class="site-map-sheet-close" aria-label="Close row card"')+'</div><p class="site-map-task-facts"><span class="site-map-type-dot" style="background:'+color+'" aria-hidden="true"></span>'+facts+'</p><details class="site-map-sheet-details"><summary>Details</summary>'+details+'<small>Motor: '+(plan?.motorAfterPanel==null?'Pending':'after panel '+esc(plan.motorAfterPanel))+' · Post '+esc(row.motor?.post??'pending')+' · ID '+esc(row.motor?.id??'pending')+'</small><small>Pile plan row '+esc(row.pilePlanRow??'pending')+'</small>'+(plan?.panelCount!==undefined&&plan.panelCount!==row.panelCount?'<p class="plan-notice">Plan changed since import. Map uses the source layout.</p>':'')+'</details>'+(plan?'<div class="site-map-row-actions">'+button(label,'open','class="primary"')+'</div>':'<small>Installation plan is unavailable.</small>')+'</section>');
   }
   function paintLocation(){
     if(!visible||!root||!svg)return;
     const state=tracker.state(),p=state.fix&&projectLocation(state.fix,source()?.crs,projection()),status=root.querySelector('.site-map-status'),nearest=root.querySelector('.site-map-nearest'),user=svg.querySelector('.site-map-user');
     if(mode==='satellite')satellite?.showLocation(state.fix,{follow:follow&&state.enabled});
-    status.textContent=messages[state.status]||messages.idle;status.dataset.state=state.status;
+    status.textContent=api.localiseText?.(messages[state.status]||messages.idle)||(messages[state.status]||messages.idle);status.dataset.state=state.status;
     if(state.fix)status.textContent+=' · Accuracy ±'+Math.ceil(state.fix.accuracy)+' m · Updated '+new Date(state.fix.timestamp).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     if(user)user.innerHTML='';nearest.textContent='';
     if(p&&view&&origin){if(mode!=='satellite'){const [x,y]=xy(p),radius=state.fix.accuracy,units=view.width/(svg.clientWidth||350);user.innerHTML='<circle class="site-map-accuracy" cx="'+x+'" cy="'+y+'" r="'+radius+'" fill="#2187ff22" stroke="#2187ff" stroke-width="1" vector-effect="non-scaling-stroke"/><circle class="site-map-dot" cx="'+x+'" cy="'+y+'" r="'+units*6+'" fill="#1674e9" stroke="#fff" stroke-width="2" vector-effect="non-scaling-stroke"><title>You are here. Accuracy ±'+Math.ceil(radius)+' metres.</title></circle>';}
       const match=nearestRow(p,geometry());if(match)nearest.textContent=match.distance>100?'Your reported position is outside the row area.':'Nearest row centreline: '+match.row.rowNumber+' · '+Math.round(match.distance)+' m. Accuracy ±'+Math.ceil(state.fix.accuracy)+' m; confirm the row number on site.';
     }
-    root.querySelector('[data-map-action="follow"]').setAttribute('aria-pressed',String(follow&&state.enabled));root.querySelector('[data-map-action="stop"]').hidden=!state.enabled;
-    const unavailable=mode==='satellite'&&!['ready','alignment'].includes(satelliteState);for(const action of ['locate','follow'])root.querySelector('[data-map-action="'+action+'"]').disabled=unavailable;
+    root.querySelector('[data-map-action="locate"]').setAttribute('aria-pressed',String(follow&&state.enabled));root.querySelector('[data-map-action="stop"]').hidden=!state.enabled;
+    const unavailable=mode==='satellite'&&!['ready','alignment'].includes(satelliteState);root.querySelector('[data-map-action="locate"]').disabled=unavailable;
     if(svg&&view)svg.setAttribute('viewBox',[view.x,view.y,view.width,view.height].join(' '));
   }
   function clearSelection(){selected=null;paintSelection(null);if(mode==='satellite')satellite?.update(filtered(),null,{focus:false});}
@@ -155,15 +158,14 @@ export function createSiteMap(api) {
   function select(row,focus=true){if(!row)return;selected=row.rowNumber;follow=false;if(mode==='satellite'){satellite.update(filtered(),selected,{focus});paintSelection(row);paintLocation();}else{if(focus)fit([row]);paint();}if(focus&&!root.classList?.contains('site-map-field'))revealSelection();}
   function updateModeCopy(){
     const notice=root.querySelector('.site-map-alignment');if(notice)notice.textContent=mode==='satellite'?'Row outlines await the project coordinate system. Phone GPS is available.':'GPS for rows awaits the project coordinate system.';
-    root.querySelector('.site-map-help').textContent=mode==='satellite'?'Use two fingers to move the map · My position requests phone location. Row details and pallet placement remain available through search.':'Drag to move · Pinch to zoom · Tap a row to open its details. Distances use the source coordinates. Device location is not saved.';
   }
   function setMode(next){
-    if(!root||next===mode||next==='satellite'&&(!satellite||api.isOffline?.())||next==='aerial'&&!api.hasImagery?.())return;
+    if(!root||next===mode||next==='satellite'&&(!api.createSatellite||api.isOffline?.())||next==='aerial'&&!api.hasImagery?.())return;
     tracker.stop();follow=false;mode=next;root.querySelector('.site-map-stage').dataset.view=mode;
     root.querySelector('.site-map-plan').hidden=mode==='satellite';root.querySelector('.site-map-google-surface').hidden=mode!=='satellite';
     for(const item of root.querySelectorAll('.site-map-view-switch button'))item.setAttribute('aria-pressed',String(item.dataset.mapAction==='view-'+mode));
     updateModeCopy();
-    if(mode==='satellite'){satelliteState='loading';satellite.update(filtered(),selected,{focus:selected!==null});satellite.mount(root.querySelector('.site-map-google-canvas'));paintSelection(geometry().find(r=>r.rowNumber===selected));paintLocation();}
+    if(mode==='satellite'){getSatellite();satelliteState='loading';satellite.update(filtered(),selected,{focus:selected!==null});satellite.mount(root.querySelector('.site-map-google-canvas'));paintSelection(geometry().find(r=>r.rowNumber===selected));paintLocation();}
     else{satellite?.destroy();paint();if(mode==='aerial')void loadAerial();else{imageryEpoch++;imageryNote();}} 
     if(selected!==null&&!root.classList?.contains('site-map-field'))revealSelection();
   }
@@ -171,11 +173,11 @@ export function createSiteMap(api) {
     abort?.abort();resize?.disconnect();if(timer)clearInterval(timer);root=host;svg=root?.querySelector('svg.site-map-svg');if(!root||!svg)return;
     visible=true;selectionKey=null;abort=new AbortController();const signal=abort.signal;
     updateModeCopy();
-    if(mode==='satellite'){satelliteState='loading';satellite.update(filtered(),selected,{focus:selected!==null});satellite.mount(root.querySelector('.site-map-google-canvas'));}
+    if(mode==='satellite'){getSatellite();satelliteState='loading';satellite.update(filtered(),selected,{focus:selected!==null&&pendingSearch,resetView:pendingSearch});satellite.mount(root.querySelector('.site-map-google-canvas'));}
     if(!view)fit();if(pendingRow){select(pendingRow);pendingRow=null;}else if(pendingSearch&&query&&searchResults().length===1)select(searchResults()[0]);else paint();pendingSearch=false;if(mode==='aerial')void loadAerial();
     if(typeof ResizeObserver==='function'){resize=new ResizeObserver(()=>{if(!visible||!view||!svg.clientWidth||!svg.clientHeight)return;const height=view.width*svg.clientHeight/svg.clientWidth;if(selected===null)view.y+=(view.height-height)/2;view.height=height;paint();});resize.observe(svg);}
     root.addEventListener('click',event=>{const action=event.target.closest('[data-map-action]')?.dataset.mapAction;if(!action)return;
-      if(action==='role-worker'||action==='role-driver'){fieldRole=action==='role-driver'?'driver':'worker';for(const item of root.querySelectorAll('.field-map-roles button'))item.setAttribute('aria-pressed',String(item.dataset.mapAction==='role-'+fieldRole));paintSelection(geometry().find(r=>r.rowNumber===selected));}
+      if(action.startsWith('work-')){api.setWorkMode?.(action.slice(5));for(const item of root.querySelectorAll('.site-map-task-switch button'))item.setAttribute('aria-pressed',String(item.dataset.mapAction==='work-'+api.getWorkMode?.()));paintSelection(geometry().find(r=>r.rowNumber===selected));}
       else if(['view-plan','view-aerial','view-satellite'].includes(action)){setMode(action.slice(5));}
       else if(action==='fit'){follow=false;selected=null;if(mode==='satellite'){satellite.update(filtered(),selected);satellite.fit();paintSelection(null);paintLocation();}else{fit();paint();}}
       else if(action==='dismiss'){selected=null;paintSelection(null);paint();root.querySelector('[data-map-action="'+('view-'+mode)+'"]')?.focus({preventScroll:true});}
@@ -183,7 +185,7 @@ export function createSiteMap(api) {
       else if(action==='locate'){clearSelection();follow=true;const state=tracker.state();if(state.fix){const p=projectLocation(state.fix,source()?.crs,projection());if(p){center(p,true);paint();}}else tracker.start();}
       else if(action==='follow'){follow=!(follow&&tracker.state().enabled);if(follow){clearSelection();tracker.start();const fix=tracker.state().fix,p=fix&&projectLocation(fix,source()?.crs,projection());if(p)center(p,true);}paint();}
       else if(action==='stop'){follow=false;tracker.stop();}
-      else if(['open','pallets','driver'].includes(action)){const row=geometry().find(r=>r.rowNumber===selected),plan=row&&planFor(row);if(plan)api.openRow(plan.id,action==='driver'?'driver':action==='pallets');}
+      else if(['open','pallets','driver'].includes(action)){const row=geometry().find(r=>r.rowNumber===selected),plan=row&&planFor(row);if(plan)api.openRow(plan.id,action==='open'?(api.getWorkMode?.()||'panels'):'pallets');}
     },{signal});
     const pointers=new Map();let previous=null,moved=false;
     svg.addEventListener('pointerdown',event=>{if(!view)return;svg.setPointerCapture(event.pointerId);pointers.set(event.pointerId,[event.clientX,event.clientY]);previous={points:[...pointers.values()],view:{...view}};moved=false;},{signal});
@@ -200,6 +202,6 @@ export function createSiteMap(api) {
     window.addEventListener('pagehide',()=>{follow=false;tracker.stop();},{signal});
     timer=setInterval(paintLocation,1000);
   }
-  function hide(){imageryEpoch++;imagery=null;visible=false;abort?.abort();abort=null;resize?.disconnect();resize=null;if(timer)clearInterval(timer);timer=null;tracker.dispose();satellite?.destroy();mode='plan';follow=false;root=null;svg=null;}
+  function hide(){imageryEpoch++;imagery=null;visible=false;abort?.abort();abort=null;resize?.disconnect();resize=null;if(timer)clearInterval(timer);timer=null;tracker.dispose();satellite?.destroy();follow=false;root=null;svg=null;}
   return {html,mount,hide,hasGeometry:()=>geometry().length>0,matches,selectRow:row=>{pendingRow=row;view=null;},tracker};
 }

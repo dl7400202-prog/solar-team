@@ -229,5 +229,8 @@ form{max-width:780px;margin:auto}
 #app:has(.plans-feature) h1{font-size:27px;margin-bottom:12px}
 .bottom{background:#fff;box-shadow:0 -4px 18px #16324b0b}
 .bottom button{gap:5px}
+.bottom.work-navigation{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.project-data-heading{cursor:default}
+#app:has(.plan-work)>.viewer-mode,#app:has(.field-map-page)>.viewer-mode{display:none}
 .viewer-mode{font-size:12px;padding:7px 10px;margin-bottom:12px}
 @media(min-width:900px){#app:has(.plans-feature){padding-top:28px}}

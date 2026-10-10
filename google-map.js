@@ -28,7 +28,7 @@ export function createGoogleMapsLoader({key,document=globalThis.document,scope=g
 }
 
 export function createGoogleSatelliteMap({loader,toLocation,colourFor=()=>null,onSelect=()=>{},onGesture=()=>{},onStatus=()=>{}}) {
-  let host=null,map=null,maps=null,epoch=0,offFailure=null,abort=null,rows=[],selected=null,layers=[],rowLines=new Map(),position=null,accuracy=null,label=null,location=null,following=false,focusPending=false;
+  let host=null,map=null,maps=null,epoch=0,offFailure=null,abort=null,rows=[],selected=null,layers=[],rowLines=new Map(),position=null,accuracy=null,label=null,location=null,following=false,focusPending=false,camera=null,resetCamera=false;
   const clearLayers=()=>{for(const layer of layers){maps?.event?.clearInstanceListeners(layer);layer.setMap(null);}layers=[];rowLines.clear();label?.setMap(null);label=null;};
   function report(state){onStatus(state);}
   function boundsFor(items){const bounds=new maps.LatLngBounds();let count=0;for(const row of items)for(const p of [row.north,row.south]){const converted=toLocation(p);if(converted){bounds.extend(converted);count++;}}return count?bounds:null;}
@@ -69,20 +69,20 @@ export function createGoogleSatelliteMap({loader,toLocation,colourFor=()=>null,o
     if(follow){map.panTo(centre);if(map.getZoom()<18)map.setZoom(18);}
   }
   function sizePosition(){if(position&&location&&map)position.setRadius(6*156543.03392*Math.cos(location.latitude*Math.PI/180)/2**map.getZoom());}
-  function update(nextRows,nextSelected,{focus=false}={}){const changed=rows!==nextRows;rows=nextRows;selected=nextSelected;focusPending=selected!==null&&(focus||(!map&&focusPending));if(!map)return;if(changed)drawRows();else highlight();if(focus){const row=rows.find(r=>r.rowNumber===selected);if(row)fit([row]);}focusPending=false;}
-  function destroy(){epoch++;offFailure?.();offFailure=null;abort?.abort();abort=null;clearLayers();position?.setMap(null);accuracy?.setMap(null);position=null;accuracy=null;if(map){maps?.event?.clearInstanceListeners(map);map.unbindAll?.();}map=null;maps=null;location=null;following=false;host=null;}
+  function update(nextRows,nextSelected,{focus=false,resetView=false}={}){const changed=rows!==nextRows;if(resetView){camera=null;resetCamera=true;}rows=nextRows;selected=nextSelected;focusPending=selected!==null&&(focus||(!map&&focusPending));if(!map)return;if(changed)drawRows();else highlight();if(focus){const row=rows.find(r=>r.rowNumber===selected);if(row)fit([row]);}focusPending=false;}
+  function destroy(){if(map){const centre=map.getCenter?.(),zoom=map.getZoom?.(),lat=centre?.lat?.(),lng=centre?.lng?.();if([lat,lng,zoom].every(Number.isFinite))camera={center:{lat,lng},zoom};}epoch++;offFailure?.();offFailure=null;abort?.abort();abort=null;clearLayers();position?.setMap(null);accuracy?.setMap(null);position=null;accuracy=null;if(map){maps?.event?.clearInstanceListeners(map);map.unbindAll?.();}map=null;maps=null;location=null;following=false;host=null;}
   function mount(element){
-    destroy();host=element;const token=++epoch;abort=new AbortController();const signal=abort.signal;
+    destroy();if(resetCamera){camera=null;resetCamera=false;}host=element;const token=++epoch;abort=new AbortController();const signal=abort.signal;
     const fail=()=>{if(token!==epoch)return;destroy();report('error');};
     offFailure=loader.onFailure(fail);report('loading');
     loader.load().then(result=>{
       if(token!==epoch||!host?.isConnected)return;
       maps=result;
-      try{const instance=new maps.Map(host,{center:{lat:56,lng:10},zoom:6,mapTypeId:'satellite',mapTypeControl:true,mapTypeControlOptions:{mapTypeIds:['satellite','hybrid']},zoomControl:true,zoomControlOptions:{position:maps.ControlPosition?.TOP_RIGHT},fullscreenControl:false,streetViewControl:false,rotateControl:false,tilt:0,heading:0,gestureHandling:'cooperative',scaleControl:true,keyboardShortcuts:true});
+      try{const instance=new maps.Map(host,{center:camera?.center||{lat:56,lng:10},zoom:camera?.zoom??6,mapTypeId:'satellite',mapTypeControl:true,mapTypeControlOptions:{mapTypeIds:['satellite','hybrid']},zoomControl:true,zoomControlOptions:{position:maps.ControlPosition?.TOP_RIGHT},fullscreenControl:false,streetViewControl:false,rotateControl:false,tilt:0,heading:0,gestureHandling:'cooperative',scaleControl:true,keyboardShortcuts:true});
         if(token!==epoch){result.event?.clearInstanceListeners(instance);instance.unbindAll?.();return;}map=instance;
         map.addListener('dragstart',onGesture);map.addListener('zoom_changed',sizePosition);
         host.addEventListener('pointerdown',onGesture,{signal});host.addEventListener('wheel',onGesture,{signal,passive:true});host.addEventListener('keydown',event=>{if(['+','-','=','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))onGesture();},{signal});
-        drawRows();const row=rows.find(r=>r.rowNumber===selected);fit(row&&focusPending?[row]:rows);focusPending=false;showLocation(location,{follow:following});
+        drawRows();const row=rows.find(r=>r.rowNumber===selected);if(focusPending||!camera)fit(row&&focusPending?[row]:rows);focusPending=false;showLocation(location,{follow:following});
       }catch{fail();}
     },fail);
   }

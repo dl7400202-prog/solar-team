@@ -1,5 +1,5 @@
-const CACHE = 'solar-team-v33', BUILD='row-navigation-20261010';
-const ASSETS = ['./', './index.html', './styles.css?v=row-navigation-20261010', './app.js?v=row-navigation-20261010', './row-plans.js?v=row-navigation-20261010', './row-plans.css?v=row-navigation-20261010', './site-map.js?v=row-navigation-20261010', './site-map.css?v=row-navigation-20261010', './offline-field.js?v=row-navigation-20261010', './vendor/proj4-2.22.0.js', './vendor/supabase-client.js', './vendor/supabase-2.105.0.js', './google-map.js?v=row-navigation-20261010', './google-maps-config.js?v=row-navigation-20261010', './manifest.webmanifest', './icon.svg'];
+const CACHE = 'solar-team-v34', BUILD='simple-field-20261010';
+const ASSETS = ['./', './index.html', './styles.css?v=simple-field-20261010', './app.js?v=simple-field-20261010', './row-plans.js?v=simple-field-20261010', './row-plans.css?v=simple-field-20261010', './site-map.js?v=simple-field-20261010', './site-map.css?v=simple-field-20261010', './offline-field.js?v=simple-field-20261010', './vendor/proj4-2.22.0.js', './vendor/supabase-client.js', './vendor/supabase-2.105.0.js', './google-map.js?v=simple-field-20261010', './google-maps-config.js?v=simple-field-20261010', './manifest.webmanifest', './icon.svg'];
 async function shellReady(cache) {
   const responses=await Promise.all(ASSETS.map(url=>cache.match(url)));
   return responses.every(response=>response?.ok)&&(await responses[1].text()).includes('src="app.js?v='+BUILD+'"');

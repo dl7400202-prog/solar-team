@@ -11,18 +11,18 @@ test('map navigation exposes source IDs while leaving plans and viewer data unch
   h.api.createMap=api=>{callbacks=api;return {matches:(row,q)=>String(row.motor?.id)===q,html:()=>'<section class="site-map">Source map</section>',selectRow:row=>selected=row,hide:()=>hides++}};
   await h.feature.handleAction('plan-row','South-901');assert.match(h.state.html,/Pile ID 5002/);assert.match(h.state.html,/String ID STRING-A/);assert.doesNotMatch(h.state.html,/Inverter/);
   await h.feature.handleAction('plan-show-map','South-901');assert.match(h.state.html,/Source map/);assert.equal(selected.rowNumber,901);
-  callbacks.openRow('South-901',true);assert.match(h.state.html,/Automatic pallet layout/);assert.ok(hides>0);
+  callbacks.openRow('South-901',true);assert.equal(h.state.screen,'rowPalletDriver');assert.match(h.state.html,/Pair unavailable/);assert.ok(hides>0);
   h.feature.suspendIfHidden(null);assert.ok(hides>1);assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 const yellow={id:'yellow',name:'Yellow',color:'#f3cf35',description:'LR8-66HYD-650M',currentClass:'H',configured:true};
 const panelTypes=[yellow,...Array.from({length:6},(_,i)=>({id:'type-'+(i+2),name:'Type '+(i+2),color:null,description:'',currentClass:'',configured:false}))];
 const plan = (overrides={}) => ({id:'South-901',field:'South',rowNumber:901,rowType:'A',panelTypeId:'yellow',panelCount:100,panelsKnown:true,panelGroups:[{quantity:25,positiveSide:'N',typeId:'yellow',sourceToken:'650H'},{quantity:25,positiveSide:'N',typeId:'yellow',sourceToken:'650H'},{quantity:25,positiveSide:'S',typeId:'yellow',sourceToken:'650H'},{quantity:25,positiveSide:'S',typeId:'yellow',sourceToken:'650H'}],dampersKnown:true,damperCount:4,dampers:[{post:2,side:'E'},{post:4,side:'W'},{post:12,side:'E'},{post:13,side:'W'}],slope:0.01,lowerBearingSide:null,motorAfterPanel:null,pallets:[],status:'verified',notes:'',source:{panels:'Photo 1',dampers:'Photo 2'},revision:3,...overrides});
-function harness(create, rows=[plan()]) {
+function harness(create, rows=[plan()], options={}) {
   const db={fields:['North','South'],panelTypes:structuredClone(panelTypes),rowPlans:structuredClone(rows)};
   const events=[], state={html:'',screen:'',feedback:''};let feature;
   const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const api={getDb:()=>db,esc,header:(title)=>'<h1>'+esc(title)+'</h1>',draw:html=>{state.html=html},btn:(label,action,cls='secondary',id='')=>'<button data-action="'+action+'" data-id="'+esc(id)+'">'+label+'</button>',feedback:msg=>{state.feedback=msg},toast:msg=>events.push({toast:msg}),navigate:(screen)=>{state.screen=screen;feature.render(screen)},markDirty:()=>events.push({dirty:true}),confirm:()=>true,newId:()=> 'new-plan',change:async(kind,item,expected)=>{events.push({kind,item:structuredClone(item),expected:structuredClone(expected)});if(kind==='row_plan_save'){const index=db.rowPlans.findIndex(p=>p.id===item.id);if(index<0)db.rowPlans.push({...item,revision:1});else db.rowPlans[index]={...item,revision:item.revision+1};}return true}};
-  feature=create(api);return {feature,state,events,db,api};
+  Object.assign(api,options);feature=create(api);return {feature,state,events,db,api};
 }
 function editForm(p) {
   const f=new FormData(), put=(key,value)=>{if(value!==null&&value!==undefined)f.set(key,String(value))};
@@ -38,11 +38,11 @@ function editForm(p) {
 test('last row resumes after feature restart and unavailable storage or deleted rows do not block browsing',async()=>{
   const {createRowPlansFeature}=await load(),memory=new Map(),storage={getItem:key=>memory.get(key),setItem:(key,value)=>memory.set(key,value)};
   const first=harness(createRowPlansFeature);first.api.storage=storage;await first.feature.handleAction('plan-row','South-901');
-  const next=harness(createRowPlansFeature);next.api.storage=storage;await next.feature.handleAction('plan-hub');assert.match(next.state.html,/Continue where you left off/);
+  const next=harness(createRowPlansFeature);next.api.storage=storage;await next.feature.handleAction('plan-hub');assert.match(next.state.html,/Continue task/);
   await next.feature.handleAction('plan-row','South-901');assert.equal(next.state.screen,'rowPlan');assert.equal(next.events.filter(e=>e.kind).length,0);
   next.db.rowPlans=[];await next.feature.handleAction('plan-hub');assert.doesNotMatch(next.state.html,/Continue where you left off/);
   const blocked=harness(createRowPlansFeature);blocked.api.storage={getItem:()=>{throw Error('blocked')},setItem:()=>{throw Error('blocked')}};
-  await blocked.feature.handleAction('plan-row','South-901');assert.equal(blocked.state.screen,'rowPlan');await blocked.feature.handleAction('plan-hub');assert.match(blocked.state.html,/Rows/);
+  await blocked.feature.handleAction('plan-row','South-901');assert.equal(blocked.state.screen,'rowPlan');await blocked.feature.handleAction('plan-hub');assert.match(blocked.state.html,/Work/);
 });
 
 test('viewer driver view moves both rows by two, recalculates pallets and returns to the current pair without writes',async()=>{
@@ -51,30 +51,29 @@ test('viewer driver view moves both rows by two, recalculates pallets and return
   h.api.canEdit=()=>false;await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','pallets');await h.feature.handleAction('plan-driver');
   assert.equal(h.state.screen,'rowPalletDriver');assert.match(h.state.html,/5 pallets/);assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,5);assert.match(h.state.html,/Label on the left when facing/);
   assert.doesNotMatch(h.state.html,/data-pallet-neighbor/);assert.match(h.state.html,/aria-label="Previous pair"[^>]*disabled/);assert.match(h.state.html,/Next pair[\s\S]*903 \/ 904/);
-  assert.deepEqual(h.feature.back('rowPalletDriver'),{screen:'rowPlan',id:null});h.feature.handleInput({dataset:{palletNeighbor:''},value:'South-903'});assert.match(h.state.html,/Rows 901 \/ 902/);assert.match(h.state.html,/5 pallets/);
+  assert.deepEqual(h.feature.back('rowPalletDriver'),{screen:'rowPlans',id:null});h.feature.handleInput({dataset:{palletNeighbor:''},value:'South-903'});assert.match(h.state.html,/Rows 901 \/ 902/);assert.match(h.state.html,/5 pallets/);
   await h.feature.handleAction('plan-driver-next');assert.match(h.state.html,/Rows 903 \/ 904/);assert.match(h.state.html,/6 pallets/);assert.doesNotMatch(h.state.html,/data-row-number="901"/);assert.match(h.state.html,/aria-label="Next pair"[^>]*disabled/);
   await h.feature.handleAction('plan-driver-next');assert.match(h.state.html,/Rows 903 \/ 904/);
   await h.feature.handleAction('plan-driver-previous');assert.match(h.state.html,/Rows 901 \/ 902/);assert.match(h.state.html,/5 pallets/);
   await h.feature.handleAction('plan-driver-next');
-  await h.feature.handleAction('plan-driver-close');assert.equal(h.state.screen,'rowPlan');assert.match(h.state.html,/200 panels/);assert.equal(h.events.filter(e=>e.kind).length,0);
+  await h.feature.handleAction('plan-driver-close');assert.equal(h.state.screen,'rowPlans');await h.feature.handleAction('plan-row','South-903');assert.match(h.state.html,/200 panels/);assert.equal(h.events.filter(e=>e.kind).length,0);
   assert.match(h.state.html,/rows 903 and 904/);assert.deepEqual(h.db,before);
 });
 
-test('driver entry replaces a nonconsecutive manual neighbour and sequential steps never skip gaps or cross fields',async()=>{
-  const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan(),plan({id:'South-902',rowNumber:902}),plan({id:'South-903',rowNumber:903}),plan({id:'North-904',field:'North',rowNumber:904}),plan({id:'South-905',rowNumber:905}),plan({id:'South-906',rowNumber:906})]);
-  await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','pallets');h.feature.handleInput({dataset:{palletNeighbor:''},value:'South-905'});assert.match(h.state.html,/rows 901 and 905/);
-  await h.feature.handleAction('plan-driver');assert.match(h.state.html,/Rows 901 \/ 902/);assert.match(h.state.html,/aria-label="Next pair"[^>]*disabled/);
-  await h.feature.handleAction('plan-driver-next');assert.match(h.state.html,/Rows 901 \/ 902/);
-  await h.feature.handleAction('plan-row','South-903');await h.feature.handleAction('plan-driver');assert.doesNotMatch(h.state.html,/class="svg-auto-pallet"/);assert.match(h.state.html,/Row 904 is not available in South/);assert.doesNotMatch(h.state.html,/North-904/);
-  await h.feature.handleAction('plan-driver-previous');assert.match(h.state.html,/Rows 901 \/ 902/);assert.equal(h.events.filter(e=>e.kind).length,0);
+test('pallet viewing ignores arbitrary neighbours and steps never skip gaps or cross fields',async()=>{
+ const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan(),plan({id:'South-902',rowNumber:902}),plan({id:'South-903',rowNumber:903}),plan({id:'North-904',field:'North',rowNumber:904}),plan({id:'South-905',rowNumber:905}),plan({id:'South-906',rowNumber:906})]);
+ await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','pallets');h.feature.handleInput({dataset:{palletNeighbor:''},value:'South-905'});
+ assert.match(h.state.html,/rows 901 and 902/);assert.match(h.state.html,/aria-label="Next pair"[^>]*disabled/);
+ await h.feature.handleAction('plan-driver-next');assert.match(h.state.html,/Rows 901 \/ 902/);
+ await h.feature.handleAction('plan-row','South-903');assert.doesNotMatch(h.state.html,/class="svg-auto-pallet"/);assert.match(h.state.html,/Row 904 is not available in South/);assert.doesNotMatch(h.state.html,/North-904/);
+ await h.feature.handleAction('plan-driver-previous');assert.match(h.state.html,/Rows 901 \/ 902/);assert.equal(h.events.filter(e=>e.kind).length,0);
 });
-
 test('driver handles unknown panel counts while retaining consecutive pairs and restores the last stepped row',async()=>{
   const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan(),plan({id:'South-902',rowNumber:902,panelCount:null,panelsKnown:false}),plan({id:'South-903',rowNumber:903}),plan({id:'South-904',rowNumber:904})]);
   const remembered=new Map();h.api.storage={getItem:key=>remembered.get(key),setItem:(key,value)=>remembered.set(key,value)};
   await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-driver');assert.match(h.state.html,/Rows 901 \/ 902/);assert.doesNotMatch(h.state.html,/class="svg-auto-pallet"/);
   await h.feature.handleAction('plan-driver-next');assert.match(h.state.html,/Rows 903 \/ 904/);assert.match(h.state.html,/6 pallets/);assert.equal(remembered.get('solar-team-last-row-v1'),'South-903');
-  await h.feature.handleAction('plan-driver-close');assert.match(h.state.html,/rows 903 and 904/);assert.equal(h.events.filter(e=>e.kind).length,0);
+  await h.feature.handleAction('plan-driver-close');assert.equal(h.state.screen,'rowPlans');await h.feature.handleAction('plan-row','South-903');assert.match(h.state.html,/rows 903 and 904/);assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 
 test('combined scheme uses source post positions only for a matching layout and element details expose original IDs',async()=>{
@@ -104,25 +103,25 @@ test('row schemes open directly and preserve the paired pallet calculation',asyn
   await h.feature.handleAction('plan-row','South-901');
   await h.feature.handleAction('plan-section','dampers');assert.match(h.state.html,/Post numbers from north/);
   await h.feature.handleAction('plan-section','pallets');assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,5);
-  await h.feature.handleAction('plan-section','instructions');assert.match(h.state.html,/Panel sequence/);assert.match(h.state.html,/Damper positions/);
+  await h.feature.handleAction('plan-section','panels');assert.match(h.state.html,/Panel sequence/);assert.match(h.state.html,/Damper positions/);
   assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 
 test('row navigation preserves every single-row view, clears old details and never writes shared data',async()=>{
   const {createRowPlansFeature}=await load();
-  for(const section of ['instructions','panels','dampers']) {
+  for(const section of ['panels','dampers']) {
     const h=harness(createRowPlansFeature,[plan({id:'South-903',rowNumber:903}),plan(),plan({id:'South-902',rowNumber:902,panelCount:75,panelGroups:plan().panelGroups.slice(0,3),motorAfterPanel:21})]);
     h.api.canEdit=()=>false;const before=structuredClone(h.db),memory=new Map();h.api.storage={setItem:(key,value)=>memory.set(key,value)};
     await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section',section);
     assert.match(h.state.html,/aria-label="Previous row"[^>]*disabled/);
     if(section!=='instructions')await h.feature.handleAction('plan-diagram-item','motor');
-    await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1>Row 902<\/h1>/);
+    await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1[^>]*>Row 902<\/h1>/);
     assert.match(h.state.html,new RegExp('data-id="'+section+'" aria-pressed="true"'));
     assert.doesNotMatch(h.state.html,/id="plan-element-details"/);assert.equal(memory.get('solar-team-last-row-v1'),'South-902');
     if(section==='panels')assert.equal((h.state.html.match(/data-panel-number=/g)||[]).length,75);
-    await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1>Row 903<\/h1>/);assert.match(h.state.html,/aria-label="Next row"[^>]*disabled/);
-    await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1>Row 903<\/h1>/);
-    await h.feature.handleAction('plan-browse-previous');assert.match(h.state.html,/<h1>Row 902<\/h1>/);
+    await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1[^>]*>Row 903<\/h1>/);assert.match(h.state.html,/aria-label="Next row"[^>]*disabled/);
+    await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1[^>]*>Row 903<\/h1>/);
+    await h.feature.handleAction('plan-browse-previous');assert.match(h.state.html,/<h1[^>]*>Row 902<\/h1>/);
     assert.deepEqual(h.db,before);assert.equal(h.events.filter(e=>e.kind).length,0);
   }
 });
@@ -132,19 +131,19 @@ test('pair navigation moves both rows by two and recalculates the normal pallet 
   h.api.canEdit=()=>false;const before=structuredClone(h.db);
   await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','pallets');
   assert.match(h.state.html,/rows 901 and 902/);assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,5);
-  assert.match(h.state.html,/aria-label="Next pair 903 \/ 904"/);
-  await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1>Row 903<\/h1>/);assert.match(h.state.html,/rows 903 and 904/);
+  assert.match(h.state.html,/Next pair[\s\S]*903 \/ 904/);
+  await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1[^>]*>Rows 903 \/ 904<\/h1>/);assert.match(h.state.html,/rows 903 and 904/);
   assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,6);assert.match(h.state.html,/data-id="pallets" aria-pressed="true"/);
   assert.match(h.state.html,/aria-label="Next pair"[^>]*disabled/);
   await h.feature.handleAction('plan-browse-previous');assert.match(h.state.html,/rows 901 and 902/);
-  await h.feature.handleAction('plan-section','panels');await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1>Row 902<\/h1>/);
+  await h.feature.handleAction('plan-section','panels');await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1[^>]*>Row 902<\/h1>/);
   assert.deepEqual(h.db,before);assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 
 test('row and pair navigation stops at missing rows and field boundaries',async()=>{
   const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan(),plan({id:'North-902',field:'North',rowNumber:902}),plan({id:'South-903',rowNumber:903}),plan({id:'South-904',rowNumber:904}),plan({id:'South-906',rowNumber:906})]);
   await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','panels');
-  assert.match(h.state.html,/aria-label="Next row"[^>]*disabled/);await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1>Row 901<\/h1>/);
+  assert.match(h.state.html,/aria-label="Next row"[^>]*disabled/);await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/<h1[^>]*>Row 901<\/h1>/);
   await h.feature.handleAction('plan-row','South-903');await h.feature.handleAction('plan-section','pallets');
   assert.match(h.state.html,/aria-label="Previous pair"[^>]*disabled/);assert.match(h.state.html,/aria-label="Next pair"[^>]*disabled/);
   await h.feature.handleAction('plan-browse-next');assert.match(h.state.html,/rows 903 and 904/);
@@ -188,7 +187,7 @@ test('schematic preserves North-to-South order and waits for a second row before
   assert.match(h.state.html,/↑ \+ North/);assert.match(h.state.html,/↓ \+ South/);
   assert.match(h.state.html,/Motor position has not been supplied/);assert.doesNotMatch(h.state.html,/Motor after panel 46/);
   await h.feature.handleAction('plan-mode','dampers');assert.match(h.state.html,/Post numbers from north/);assert.match(h.state.html,/>13<\/text>/);
-  await h.feature.handleAction('plan-mode','pallets');assert.match(h.state.html,/Automatic pallet layout is awaiting row information/);assert.doesNotMatch(h.state.html,/36 panels/);
+  await h.feature.handleAction('plan-mode','pallets');assert.match(h.state.html,/Pair unavailable/);assert.doesNotMatch(h.state.html,/36 panels/);
   assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 test('saving a constructor draft carries the original revision and source metadata without completion writes',async()=>{
@@ -212,8 +211,8 @@ test('JSON import rejects duplicate identities and ID reuse across rows',async()
 });
 test('team context returns to the owning team; Settings type directory resets it',async()=>{
   const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature);h.feature.openTeam({id:'team-4',number:4,field:'South',work:'Solar panel installation',from:901});
-  assert.deepEqual(h.feature.back('rowPlans'),{screen:'team',id:'team-4'});assert.equal(h.feature.navDestination('rowPlans'),'today');
-  await h.feature.handleAction('plan-types','settings');assert.deepEqual(h.feature.back('panelTypes'),{screen:'settings',id:null});assert.equal(h.feature.navDestination('panelTypes'),'settings');
+  assert.deepEqual(h.feature.back('rowPlans'),{screen:'team',id:'team-4'});assert.equal(h.feature.navDestination('rowPlans'),'rows');
+  await h.feature.handleAction('plan-types','settings');assert.deepEqual(h.feature.back('panelTypes'),{screen:'settings',id:null});assert.equal(h.feature.navDestination('panelTypes'),'more');
 });
 test('rendered labels escape source text and disregard unsafe colour strings',async()=>{
   const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan({notes:'<script>alert(1)</script>'})]);h.db.panelTypes[0].color='red;background:url(https://bad.example)';
@@ -241,9 +240,7 @@ test('loading latest invalidates a stale import preview before apply',async()=>{
 test('saved manual positions stay separate from the automatic forklift layout',async()=>{
   const {createRowPlansFeature}=await load(),p=plan({pallets:[{panels:36,afterPanel:75,adjacentRow:902},{panels:24,afterPanel:25,adjacentRow:902}]}),right=plan({id:'right',rowNumber:902}),h=harness(createRowPlansFeature,[p,right]);
   await h.feature.handleAction('plan-row',p.id);
-  assert.match(h.state.html,/<section class="card plan-pallet-section"/);
-  assert.match(h.state.html,/6 pallets/);
-  assert.match(h.state.html,/100 \+ 100 = 200 panels/);
+  assert.doesNotMatch(h.state.html,/<section class="card plan-pallet-section"/);
   await h.feature.handleAction('plan-pallets');
   assert.match(h.state.html,/Automatic pallet placement between rows 901 and 902/);
   assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,6);
@@ -328,17 +325,29 @@ test('opposite row directions identify the destination and unknown plus never gu
   const unknown=automaticPalletLayout(plan({panelGroups:all(null)}),plan({id:'right',rowNumber:902,panelGroups:all(null)}));
   assert.ok(unknown.pallets.every(x=>x.positiveSide===null&&x.labelSide===null));
 });
-test('row cards automatically open a known pair and recalculate on right-row selection without writes',async()=>{
-  const {createRowPlansFeature}=await load(),p=plan(),r=plan({id:'right',rowNumber:902}),short=plan({id:'short',rowNumber:903,panelCount:75,panelGroups:[{quantity:75,positiveSide:'N',typeId:'yellow',sourceToken:''}]}),h=harness(createRowPlansFeature,[p,r,short]);
-  await h.feature.handleAction('plan-row',p.id);assert.match(h.state.html,/6 pallets/);assert.match(h.state.html,/100 \+ 100 = 200 panels/);
-  await h.feature.handleAction('plan-pallets');assert.match(h.state.html,/Automatic pallet placement between rows 901 and 902/);
-  assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,6);
-  const select={dataset:{palletNeighbor:''},value:'short'};
-  h.feature.handleInput(select);assert.match(h.state.html,/5 pallets/);assert.match(h.state.html,/rows 901 and 903/);
-  h.feature.handleInput({...select,value:''});assert.match(h.state.html,/Choose the row on your right/);assert.doesNotMatch(h.state.html,/class="svg-auto-pallet"/);
-  assert.equal(h.events.filter(e=>e.kind).length,0);
+test('pallet mode is the single paired display and validated start-row jumps recalculate without writes',async()=>{
+ const {createRowPlansFeature}=await load(),p=plan(),r=plan({id:'right',rowNumber:902}),short=plan({id:'short',rowNumber:903,panelCount:75,panelGroups:[{quantity:75,positiveSide:'N',typeId:'yellow',sourceToken:''}]}),last=plan({id:'last',rowNumber:904,panelCount:50,panelGroups:[{quantity:50,positiveSide:'N',typeId:'yellow',sourceToken:''}]}),h=harness(createRowPlansFeature,[p,r,short,last]);h.api.canEdit=()=>false;
+ const before=structuredClone(h.db);await h.feature.handleAction('plan-row',p.id);assert.equal((h.state.html.match(/class="plan-svg"/g)||[]).length,1);
+ await h.feature.handleAction('plan-section','pallets');assert.equal(h.state.screen,'rowPalletDriver');assert.match(h.state.html,/rows 901 and 902/);assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,6);assert.doesNotMatch(h.state.html,/data-pallet-neighbor|Driver view ↗/);
+ const form=new FormData();form.set('row','903');await h.feature.handleForm('plan-jump',form);assert.match(h.state.html,/Rows 903 \/ 904/);assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,4);
+ form.set('row','904');await h.feature.handleForm('plan-jump',form);assert.match(h.state.feedback,/consecutive neighbour/);assert.match(h.state.html,/Rows 903 \/ 904/);
+ await h.feature.handleAction('plan-section','dampers');assert.equal(h.state.screen,'rowPlan');assert.match(h.state.html,/Row 903/);assert.match(h.state.html,/Post numbers from north/);assert.deepEqual(h.db,before);assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 
+test('work mode survives restart, invalid or blocked storage does not block field browsing',async()=>{
+ const {createRowPlansFeature}=await load(),memory=new Map(),storage={getItem:key=>memory.get(key),setItem:(key,value)=>memory.set(key,value)};
+ const first=harness(createRowPlansFeature,[plan()],{storage});await first.feature.handleAction('plan-work-mode','dampers');
+ const restarted=harness(createRowPlansFeature,[plan()],{storage,canEdit:()=>false});await restarted.feature.handleAction('plan-row','South-901');assert.match(restarted.state.html,/data-id="dampers" aria-pressed="true"/);assert.doesNotMatch(restarted.state.html,/>Instructions<|data-pallet-neighbor/);
+ memory.set('solar-team-work-mode-v1','unknown');const invalid=harness(createRowPlansFeature,[plan()],{storage});await invalid.feature.handleAction('plan-row','South-901');assert.match(invalid.state.html,/data-id="panels" aria-pressed="true"/);
+ const blocked=harness(createRowPlansFeature,[plan()],{storage:{getItem(){throw Error('blocked')},setItem(){throw Error('blocked')}}});await blocked.feature.handleAction('plan-row','South-901');await blocked.feature.handleAction('plan-section','dampers');assert.match(blocked.state.html,/Post numbers from north/);assert.equal(restarted.events.filter(e=>e.kind).length,0);
+});
+
+test('fullscreen schemes and map preserve row and task on exit without data writes',async()=>{
+ const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature);const before=structuredClone(h.db);
+ await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','dampers');await h.feature.handleAction('plan-fullscreen');assert.match(h.state.html,/plan-work-fullscreen/);
+ await h.feature.handleAction('plan-work-back');assert.doesNotMatch(h.state.html,/plan-work-fullscreen/);assert.match(h.state.html,/Row 901/);assert.match(h.state.html,/data-id="dampers" aria-pressed="true"/);
+ await h.feature.handleAction('plan-field-open');await h.feature.handleAction('plan-map-fullscreen');assert.equal(h.feature.isMapFullscreen(),true);await h.feature.handleAction('plan-map-fullscreen');assert.equal(h.feature.isMapFullscreen(),false);assert.equal(h.state.screen,'rowFieldMap');assert.deepEqual(h.db,before);
+});
 
 
 test('viewer can filter rows and choose a pallet neighbour, but cannot open editors or submit changes',async()=>{
