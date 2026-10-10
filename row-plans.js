@@ -211,6 +211,12 @@ export function createRowPlansFeature(api) {
     const candidates = plans().filter(row => row.field===plan.field && row.rowNumber!==plan.rowNumber && row.id!==plan.id);
     return candidates.find(row => row.id===palletNeighborId) || (palletNeighborId===null && candidates.find(row => row.rowNumber===plan.rowNumber+1)) || null;
   }
+  function driverPair(plan,step=0) {
+    if(!plan||!Number.isSafeInteger(plan.rowNumber))return null;
+    const left=plans().find(row=>row.field===plan.field&&row.rowNumber===plan.rowNumber+step*2);
+    if(!left)return null;
+    return {left,right:plans().find(row=>row.field===left.field&&row.rowNumber===left.rowNumber+1)||null};
+  }
   function palletPairControls(plan,compact=false) {
     const neighbor = palletNeighbor(plan);
     const candidates = plans().filter(row => row.field===plan.field && row.rowNumber!==plan.rowNumber && row.id!==plan.id).sort((a,b)=>a.rowNumber-b.rowNumber);
@@ -283,8 +289,8 @@ export function createRowPlansFeature(api) {
     posts.forEach((post,i) => {const y=80+i*spacing;svg+='<circle cx="180" cy="'+y+'" r="16" fill="#fff" stroke="#657b90" stroke-width="2"/><text x="180" y="'+(y+5)+'" text-anchor="middle" class="svg-label">'+post+'</text>';plan.dampers.filter(d=>d.post===post).forEach(d=>{const east=d.side==='E',x=east?242:73;svg+='<path d="M'+(east?199:161)+' '+y+'H'+(east?257:102)+'" stroke="#00875b" stroke-width="6"/><rect x="'+x+'" y="'+(y-21)+'" width="45" height="42" rx="6" fill="#e0f6eb" stroke="#00875b" stroke-width="2"/><text x="'+(x+22)+'" y="'+(y+5)+'" text-anchor="middle" class="svg-label">'+d.side+'</text>'})});
     return (!plan.dampersKnown?'<p class="plan-notice">Incomplete damper instructions</p>':'')+svg+'<text x="180" y="'+(height-18)+'" text-anchor="middle" class="svg-small">Post numbers from north · '+plan.dampers.length+' dampers</text></svg><p class="hint">Only recorded posts are shown. Gaps between posts are schematic.</p>';
   }
-  function automaticPalletDiagram(plan) {
-    const neighbor = palletNeighbor(plan), layout = automaticPalletLayout(plan,neighbor);
+  function automaticPalletDiagram(plan,neighbor=palletNeighbor(plan)) {
+    const layout = automaticPalletLayout(plan,neighbor);
     if (layout.error) return '<div class="plan-no-diagram"><strong>Automatic pallet layout is awaiting row information</strong><p>'+esc(layout.error)+'</p></div>';
     if (!layout.pallets.length) return '<div class="plan-no-diagram"><strong>No pallets needed</strong><p>Both rows have zero panels.</p></div>';
     const total = layout.span, height = Math.max(680,layout.pallets.length*110+140), start = 65, length = height-145;
@@ -331,8 +337,13 @@ export function createRowPlansFeature(api) {
   function drawDriver(){
     const plan=planById(selectedRow);
     if(!plan){renderPage('Pallet placement','<section class="empty"><h2>Row plan is unavailable</h2>'+btn('View row plans','plan-list')+'</section>');return;}
-    const neighbor=palletNeighbor(plan),layout=automaticPalletLayout(plan,neighbor);
-    api.draw('<section class="plan-driver" aria-label="Pallet driver view"><header class="plan-driver-heading"><div><p class="eyebrow">'+esc(plan.field)+' · Pallet placement</p><h1 tabindex="-1">Rows '+esc(plan.rowNumber)+(neighbor?' / '+esc(neighbor.rowNumber):'')+'</h1></div>'+btn('← Back','plan-driver-close','secondary')+'</header><div class="plan-driver-scroll">'+palletPairControls(plan,true)+'<div class="plan-driver-summary"><strong>'+(layout.error?'Choose two rows':layout.pallets.length+' pallets')+'</strong><span>'+(layout.error?'':layout.totalPanels+' panels · 36 per pallet')+'</span></div><p class="plan-driver-compass">↑ N · North <span>Count North → South · S ↓</span></p>'+automaticPalletDiagram(plan)+'</div><footer class="plan-driver-footer"><strong>Label on the left when facing +</strong><span>+ North: left · + South: right</span></footer></section>');
+    const neighbor=driverPair(plan)?.right,layout=automaticPalletLayout(plan,neighbor),previous=driverPair(plan,-1),next=driverPair(plan,1);
+    palletNeighborId=neighbor?.id||'';rememberRow(plan);
+    const rowInfo=(row,side)=>'<div><small>Row on your '+side+'</small><strong>Row '+esc(row?.rowNumber??plan.rowNumber+1)+'</strong><small>'+esc(row?.panelCount==null?'Panel count not supplied':row.panelCount+' panels')+'</small></div>';
+    const arrow=(label,action,available,symbol)=>'<button type="button" class="'+(symbol==='→'?'primary':'secondary')+'" data-action="'+action+'" aria-label="'+label+'" title="'+label+'"'+(available?'':' disabled')+'><span aria-hidden="true">'+symbol+'</span></button>';
+    const navigation='<nav class="plan-driver-nav" aria-label="Row pair navigation">'+arrow('Previous pair','plan-driver-previous',previous?.right,'←')+'<div id="driver-next-pair"><small>'+(next?.right?'Next pair':'Next pair unavailable')+'</small>'+(next?.right?'<strong>'+esc(next.left.rowNumber)+' / '+esc(next.right.rowNumber)+'</strong>':'<strong>'+esc(plan.field)+'</strong>')+'</div>'+arrow('Next pair','plan-driver-next',next?.right,'→')+'</nav>';
+    const scheme=neighbor?automaticPalletDiagram(plan,neighbor):'<div class="plan-no-diagram"><strong>Row '+esc(plan.rowNumber+1)+' is not available in '+esc(plan.field)+'</strong><p>Consecutive rows are required for this driver pair.</p></div>';
+    api.draw('<section class="plan-driver" aria-label="Pallet driver view"><header class="plan-driver-heading"><div><p class="eyebrow">'+esc(plan.field)+' · Pallet placement</p><h1 tabindex="-1">Rows '+esc(plan.rowNumber)+(neighbor?' / '+esc(neighbor.rowNumber):'')+'</h1></div>'+btn('← Back','plan-driver-close','secondary')+'</header><div class="plan-driver-scroll" tabindex="0" role="region" aria-label="Pallet layout"><div class="grid2 plan-pallet-pair">'+rowInfo(plan,'left')+rowInfo(neighbor,'right')+'</div><div class="plan-driver-summary" role="status"><strong>'+(layout.error?(neighbor?'Panel counts pending':'Pair unavailable'):layout.pallets.length+' pallets')+'</strong><span>'+(layout.error?'':layout.totalPanels+' panels · 36 per pallet')+'</span></div><p class="plan-driver-compass">↑ N · North <span>Count North → South · S ↓</span></p>'+scheme+'</div><footer class="plan-driver-footer">'+navigation+'<strong>Label on the left when facing +</strong><span>+ North: left · + South: right</span></footer></section>');
   }
 
   function blankPlan() {
@@ -397,6 +408,7 @@ export function createRowPlansFeature(api) {
   }
   function handleInput(el) {
     if (el.dataset?.palletNeighbor !== undefined) {
+      if(currentScreen==='rowPalletDriver')return true;
       if (currentScreen==='rowPlanEdit') captureDraft();
       palletNeighborId = el.value;
       if (currentScreen==='rowPlanEdit') {
@@ -431,7 +443,8 @@ export function createRowPlansFeature(api) {
     else if (action==='plan-show-map') {const plan=planById(id);if(plan){field=plan.field;query='';listMode='map';mapFeature()?.selectRow(mapRecord(plan));api.navigate('rowPlans');}}
     else if (action==='plan-list') api.navigate('rowPlans');
     else if (action==='plan-row') openRow(id);
-    else if (action==='plan-driver') {if(planById(selectedRow)){tab='diagram';mode='pallets';api.navigate('rowPalletDriver');}}
+    else if (action==='plan-driver') {const plan=planById(selectedRow);if(plan){palletNeighborId=driverPair(plan)?.right?.id||'';tab='diagram';mode='pallets';api.navigate('rowPalletDriver');}}
+    else if (action==='plan-driver-next'||action==='plan-driver-previous') {if(currentScreen==='rowPalletDriver'){const pair=driverPair(planById(selectedRow),action==='plan-driver-next'?1:-1);if(pair?.right){selectedRow=pair.left.id;palletNeighborId=pair.right.id;diagramItem=null;render('rowPalletDriver');if(typeof document!=='undefined'){const focus=document.querySelector('[data-action="'+action+'"]:not(:disabled)')||document.querySelector('.plan-driver-heading h1');focus?.focus({preventScroll:true});}}}}
     else if (action==='plan-driver-close') {api.navigate('rowPlan');if(typeof document!=='undefined'){document.querySelector('.plan-section-tabs')?.scrollIntoView({block:'start'});document.querySelector('[data-action="plan-driver"]')?.focus({preventScroll:true});}}
     else if (action==='plan-diagram-item') {diagramItem=id;render('rowPlan');if(typeof document!=='undefined'){document.querySelector('#plan-element-details')?.scrollIntoView({block:'nearest'});document.querySelector('#plan-element-details')?.focus({preventScroll:true});}}
     else if (action==='plan-diagram-close') {const previous=diagramItem;diagramItem=null;render('rowPlan');if(typeof document!=='undefined')document.querySelectorAll('[data-action="plan-diagram-item"]').forEach(el=>{if(el.dataset.id===previous)el.focus({preventScroll:true});});}
