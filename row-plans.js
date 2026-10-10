@@ -203,7 +203,7 @@ export function createRowPlansFeature(api) {
     const mixed=new Set(plan.panelGroups.map(g=>g.typeId)).size>1;
     const active=tab==='plan'?'instructions':mode;
     const tabs = '<div class="plan-tabs plan-section-tabs" role="group" aria-label="Plan view">'+[['instructions','Instructions'],['panels','Panels'],['dampers','Dampers'],['pallets','Pallets']].map(([v,label]) => '<button type="button" class="'+(active===v?'active':'')+'" data-action="plan-section" data-id="'+v+'" aria-pressed="'+(active===v)+'">'+label+'</button>').join('')+'</div>';
-    renderPage('Row '+plan.rowNumber, '<section class="card plan-overview"><div class="row"><p class="eyebrow">'+esc(plan.field)+(plan.rowType?' · Row type '+esc(plan.rowType):'')+'</p>'+status(plan)+'</div>'+typeBadge(plan.panelTypeId)+(mixed?'<small class="warning-text">Mixed panel types · Check each group</small>':'')+'<div class="plan-summary"><span><small>Panels</small><strong>'+esc(knownText(plan.panelsKnown, plan.panelCount, 'panels'))+'</strong></span><span><small>Dampers</small><strong>'+esc(knownText(plan.dampersKnown, plan.damperCount, 'dampers'))+'</strong></span><span><small>Motor · panel</small><strong>'+(plan.motorAfterPanel===null?'Not supplied':'After '+esc(plan.motorAfterPanel))+'</strong></span></div>'+(mapRecord(plan)?btn('Show on map','plan-show-map','compact plan-map-link',plan.id):'')+'</section>'+tabs+(tab==='diagram'?diagram(plan):planDetails(plan))+sourceDetails(plan)+btn('Edit installation plan', 'plan-edit', 'secondary', plan.id));
+    renderPage('Row '+plan.rowNumber, '<section class="card plan-overview"><div class="row"><p class="eyebrow">'+esc(plan.field)+(plan.rowType?' · Row type '+esc(plan.rowType):'')+'</p>'+status(plan)+'</div>'+typeBadge(plan.panelTypeId)+(mixed?'<small class="warning-text">Mixed panel types · Check each group</small>':'')+'<div class="plan-summary"><span><small>Panels</small><strong>'+esc(knownText(plan.panelsKnown, plan.panelCount, 'panels'))+'</strong></span><span><small>Dampers</small><strong>'+esc(knownText(plan.dampersKnown, plan.damperCount, 'dampers'))+'</strong></span><span><small>Motor · panel</small><strong>'+(plan.motorAfterPanel===null?'Not supplied':'After '+esc(plan.motorAfterPanel))+'</strong></span></div>'+(mapRecord(plan)?btn('Show on map','plan-show-map','compact plan-map-link',plan.id):'')+'</section>'+'<div class="plan-browse-toolbar">'+rowNavigation(plan)+tabs+'</div>'+(tab==='diagram'?diagram(plan):planDetails(plan))+sourceDetails(plan)+btn('Edit installation plan', 'plan-edit', 'secondary', plan.id));
   }
   function planDetails(plan) {
     const geometry=mapRecord(plan);
@@ -222,6 +222,35 @@ export function createRowPlansFeature(api) {
     const left=plans().find(row=>row.field===plan.field&&row.rowNumber===plan.rowNumber+step*2);
     if(!left)return null;
     return {left,right:plans().find(row=>row.field===left.field&&row.rowNumber===left.rowNumber+1)||null};
+  }
+  function browseTarget(plan,step) {
+    if(!plan)return null;
+    if(tab==='diagram'&&mode==='pallets') {
+      const pair=driverPair(plan,step);
+      return pair?.right?pair:null;
+    }
+    const left=plans().find(row=>row.field===plan.field&&row.rowNumber===plan.rowNumber+step);
+    return left?{left,right:null}:null;
+  }
+  function rowNavigation(plan) {
+    const paired=tab==='diagram'&&mode==='pallets',neighbor=paired?palletNeighbor(plan):null;
+    const previous=browseTarget(plan,-1),next=browseTarget(plan,1);
+    const label=target=>target.right?target.left.rowNumber+' / '+target.right.rowNumber:String(target.left.rowNumber);
+    const arrow=(target,step,symbol)=>'<button type="button" class="'+(step===1?'primary':'secondary')+'" data-action="plan-browse-'+(step===1?'next':'previous')+'" aria-label="'+(step===1?'Next':'Previous')+' '+(paired?'pair':'row')+(target?' '+esc(label(target)):'')+'"'+(target?'':' disabled')+'><span aria-hidden="true">'+symbol+'</span></button>';
+    return '<nav class="plan-row-navigation" aria-label="'+(paired?'Row pair':'Row')+' navigation">'+arrow(previous,-1,'←')+'<div aria-live="polite" aria-atomic="true"><strong>'+esc(plan.field)+' · '+(paired?'Rows ':'Row ')+esc(plan.rowNumber)+(neighbor?' / '+esc(neighbor.rowNumber):'')+'</strong><small>'+(next?'Next: '+esc(label(next)):'Next '+(paired?'pair':'row')+' unavailable')+'</small></div>'+arrow(next,1,'→')+'</nav>';
+  }
+  function browseRow(step) {
+    if(currentScreen!=='rowPlan')return;
+    const target=browseTarget(planById(selectedRow),step);
+    if(!target)return;
+    selectedRow=target.left.id;palletNeighborId=target.right?.id||null;diagramItem=null;
+    render('rowPlan');
+    if(typeof document!=='undefined') {
+      const toolbar=document.querySelector('.plan-browse-toolbar');
+      toolbar?.scrollIntoView({block:'start'});
+      const action='plan-browse-'+(step===1?'next':'previous');
+      (toolbar?.querySelector('[data-action="'+action+'"]:not(:disabled)')||toolbar?.querySelector('[aria-pressed="true"]'))?.focus({preventScroll:true});
+    }
   }
   function palletPairControls(plan,compact=false) {
     const neighbor = palletNeighbor(plan);
@@ -495,6 +524,7 @@ export function createRowPlansFeature(api) {
     else if (action==='plan-show-map') {const plan=planById(id);if(plan){field=plan.field;query='';listMode='map';mapFeature()?.selectRow(mapRecord(plan));api.navigate('rowPlans');}}
     else if (action==='plan-list') api.navigate('rowPlans');
     else if (action==='plan-row') openRow(id);
+    else if (action==='plan-browse-next'||action==='plan-browse-previous') browseRow(action==='plan-browse-next'?1:-1);
     else if (action==='plan-driver') {const plan=planById(selectedRow);if(plan){palletNeighborId=driverPair(plan)?.right?.id||'';tab='diagram';mode='pallets';api.navigate('rowPalletDriver');}}
     else if (action==='plan-driver-next'||action==='plan-driver-previous') {if(currentScreen==='rowPalletDriver'){const pair=driverPair(planById(selectedRow),action==='plan-driver-next'?1:-1);if(pair?.right){selectedRow=pair.left.id;palletNeighborId=pair.right.id;diagramItem=null;render('rowPalletDriver');if(typeof document!=='undefined'){const focus=document.querySelector('[data-action="'+action+'"]:not(:disabled)')||document.querySelector('.plan-driver-heading h1');focus?.focus({preventScroll:true});}}}}
     else if (action==='plan-driver-close') {api.navigate('rowPlan');if(typeof document!=='undefined'){document.querySelector('.plan-section-tabs')?.scrollIntoView({block:'start'});document.querySelector('[data-action="plan-driver"]')?.focus({preventScroll:true});}}
@@ -506,7 +536,7 @@ export function createRowPlansFeature(api) {
     else if (action==='plan-type-edit') {selectedType=id;typeBase=copy(typeById(id));api.navigate('panelTypeEdit');}
     else if (action==='plan-import') {importPreview=null;importText='';api.navigate('rowPlanImport');}
     else if (action==='plan-tab') {if(['plan','diagram'].includes(id))tab=id;render('rowPlan');}
-    else if (action==='plan-section') {const scroll=globalThis.window?.scrollY||0;if(id==='instructions')tab='plan';else if(['panels','dampers','pallets'].includes(id)){tab='diagram';mode=id;}render('rowPlan');if(typeof document!=='undefined'){const tabs=document.querySelector('.plan-section-tabs');if(scroll>240)tabs?.scrollIntoView({block:'start'});tabs?.querySelector('[aria-pressed="true"]')?.focus({preventScroll:true});}}
+    else if (action==='plan-section') {const scroll=globalThis.window?.scrollY||0;if(id==='instructions')tab='plan';else if(['panels','dampers','pallets'].includes(id)){tab='diagram';mode=id;}render('rowPlan');if(typeof document!=='undefined'){const tabs=document.querySelector('.plan-section-tabs');if(scroll>240)document.querySelector('.plan-browse-toolbar')?.scrollIntoView({block:'start'});tabs?.querySelector('[aria-pressed="true"]')?.focus({preventScroll:true});}}
     else if (action==='plan-pallets') {tab='diagram';mode='pallets';render('rowPlan');}
     else if (action==='plan-mode') {if(['panels','dampers','pallets'].includes(id))mode=id;render('rowPlan');}
     else if (/^plan-(add|remove)-(group|damper|pallet)$/.test(action)) {

@@ -45,7 +45,14 @@
 .plan-tabs .active{background:white;color:var(--green-dark);box-shadow:0 2px 6px #14304a12}
 .rows-hub>.plan-tabs{margin:12px 0}
 .plan-tabs button{margin:0;min-height:44px}
-.plan-section-tabs{gap:2px;position:sticky;top:6px;z-index:2;background:#e9eef4;box-shadow:0 0 0 6px var(--bg)}
+.plan-browse-toolbar{position:sticky;top:6px;z-index:2;background:var(--bg);margin:16px 0;box-shadow:0 0 0 6px var(--bg);scroll-margin-top:6px}
+.plan-row-navigation{display:grid;grid-template-columns:52px minmax(0,1fr) 52px;gap:10px;align-items:center;margin:0 0 8px}
+.plan-row-navigation button{width:52px;min-height:48px;margin:0;padding:4px;border-radius:12px}
+.plan-row-navigation button span{font-size:26px;line-height:1}
+.plan-row-navigation>div{text-align:center;min-width:0}
+.plan-row-navigation strong{display:block;font-size:15px;line-height:1.4;overflow-wrap:anywhere}
+.plan-row-navigation small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.plan-section-tabs{gap:2px;background:#e9eef4;margin:0}
 .plan-section-tabs button{font-size:12px;padding:10px 3px}
 .plan-mode-tabs{margin-top:0}
 .plan-detail-list{list-style:none;padding:0;margin:0}
