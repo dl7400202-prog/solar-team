@@ -262,6 +262,11 @@ export function createRowPlansFeature(api) {
     }else if(diagramItem==='motor')content='<h3>Motor</h3><strong>'+(plan.motorAfterPanel==null?'Position not supplied':'After panel '+esc(plan.motorAfterPanel))+'</strong>'+(geometry?.motor?'<p>Post '+esc(geometry.motor.post)+' · Pile ID '+esc(geometry.motor.id)+'</p>':'');
     return content?'<section id="plan-element-details" class="plan-element-details" tabindex="-1" aria-label="Selected installation element">'+content+btn('Close details','plan-diagram-close','secondary')+'</section>':'';
   }
+  function motorClearance(x,y,width,panelPitch,north,rowNumber) {
+    const top=Math.max(north,y-panelPitch),height=y-top;
+    if(height<=0)return '';
+    return '<g class="svg-motor-clearance" data-row-number="'+esc(rowNumber)+'" aria-label="Empty panel space immediately north of the motor"><title>No panel above the motor</title><rect x="'+x+'" y="'+top+'" width="'+width+'" height="'+height+'" fill="#e9eef3"/><path d="M'+(x+width/2)+' '+top+'V'+y+'" stroke="#8b9cae" stroke-width="3"/></g>';
+  }
   function panelDiagram(plan) {
     const sum=plan.panelGroups.reduce((value,g)=>value+g.quantity,0),total=plan.panelCount||sum;
     if(!total||!plan.panelGroups.length)return '<div class="plan-no-diagram"><strong>Panel layout is awaiting information</strong><p>Add panel groups, quantities and directions in the constructor.</p></div>';
@@ -281,7 +286,7 @@ export function createRowPlansFeature(api) {
       svg+='<g'+action('group-'+i,'Group '+(i+1)+', panels '+first+' to '+index+', '+direction(group.positiveSide))+'><rect x="142" y="'+y+'" width="76" height="'+height+'" fill="url(#plan-panel-lines)"'+(diagramItem==='group-'+i?' stroke="#00875b" stroke-width="3"':'')+'/><rect x="142" y="'+y+'" width="5" height="'+height+'" fill="'+colorValue(typeById(group.typeId)?.color)+'"/><text x="132" y="'+(y+16)+'" text-anchor="end" class="svg-label">'+first+'–'+index+'</text><text x="180" y="'+(middle+5)+'" text-anchor="middle" class="svg-pallet-row-direction">'+(group.positiveSide==='N'?'↑ + N':group.positiveSide==='S'?'↓ + S':'? +')+'</text><text x="228" y="'+(y+16)+'" class="svg-small">Group '+(i+1)+'</text></g>';
     });
     if(sum<total)svg+='<text x="228" y="'+(46+sum/total*548+22)+'" class="svg-small">'+(total-sum)+' pending</text>';
-    if(plan.motorAfterPanel!==null){const motorPoint=geometry?.drive?.point,y=46+(located&&geometry.drive?.after===plan.motorAfterPanel&&validPoint(motorPoint)?position(motorPoint):plan.motorAfterPanel/total)*548;svg+='<g'+action('motor','Motor after panel '+plan.motorAfterPanel)+'><rect x="137" y="'+(y-20)+'" width="86" height="40" fill="transparent"/><path d="M135 '+y+'H225" stroke="#ae3042" stroke-width="3"/><circle cx="180" cy="'+y+'" r="6" fill="#fff" stroke="#ae3042" stroke-width="3"/><text x="228" y="'+(y+4)+'" class="svg-motor">Motor · '+plan.motorAfterPanel+'</text></g>';}
+    if(plan.motorAfterPanel!==null){const motorPoint=geometry?.drive?.point,y=46+(located&&geometry.drive?.after===plan.motorAfterPanel&&validPoint(motorPoint)?position(motorPoint):plan.motorAfterPanel/total)*548;svg+='<g'+action('motor','Motor after panel '+plan.motorAfterPanel)+'><rect x="137" y="'+(y-20)+'" width="86" height="40" fill="transparent"/>'+motorClearance(142,y,76,548/total,46,plan.rowNumber)+'<path d="M135 '+y+'H225" stroke="#ae3042" stroke-width="3"/><circle cx="180" cy="'+y+'" r="6" fill="#fff" stroke="#ae3042" stroke-width="3"/><text x="228" y="'+(y+4)+'" class="svg-motor">Motor · '+plan.motorAfterPanel+'</text></g>';}
     if(located)plan.dampers.forEach((d,i)=>{const post=geometry.posts?.find(p=>p.post===d.post&&p.side===d.side);if(!validPoint(post?.point))return;const x=d.side==='E'?306:54,y=46+position(post.point)*548;svg+='<g'+action('damper-'+i,'Damper post '+d.post+', '+(d.side==='E'?'East':'West'))+'><path d="M'+(d.side==='E'?220:140)+' '+y+'H'+x+'" stroke="#00875b" stroke-width="2" stroke-dasharray="3 3"/><rect x="'+(x-18)+'" y="'+(y-15)+'" width="36" height="30" rx="7" fill="#e0f6eb" stroke="#00875b" stroke-width="2"/><text x="'+x+'" y="'+(y+4)+'" text-anchor="middle" class="svg-damper">'+d.post+' '+d.side+'</text></g>';});
     svg+='<text x="180" y="623" text-anchor="middle" class="svg-small">'+total+' panel positions · North → South</text></svg>';
     const controls='<div class="plan-element-actions" aria-label="Installation element details">'+plan.panelGroups.map((g,i)=>btn('Group '+(i+1),'plan-diagram-item','secondary','group-'+i)).join('')+(plan.motorAfterPanel!==null?btn('Motor','plan-diagram-item','secondary','motor'):'')+plan.dampers.map((d,i)=>btn('Post '+d.post+' '+d.side,'plan-diagram-item','secondary','damper-'+i)).join('')+'</div>';
@@ -315,7 +320,7 @@ export function createRowPlansFeature(api) {
       }
       if (geometry.motorPosition !== null) {
         const y = start+geometry.motorPosition*length;
-        drawing += '<path d="M'+(x-3)+' '+y+'H'+(x+63)+'" stroke="#ae3042" class="svg-pallet-motor" data-row-number="'+esc(row.rowNumber)+'" stroke-width="3"/>';
+        drawing += motorClearance(x,y,60,length/total,rowStart,row.rowNumber)+'<path d="M'+(x-3)+' '+y+'H'+(x+63)+'" stroke="#ae3042" class="svg-pallet-motor" data-row-number="'+esc(row.rowNumber)+'" stroke-width="3"/>';
       }
       return drawing+'<text x="'+(x+30)+'" y="'+(rowStart+rowLength+23)+'" text-anchor="middle" class="svg-small">Panel '+row.panelCount+'</text>';
     };
