@@ -98,3 +98,31 @@
 @media(orientation:landscape) and (max-height:550px){.field-map-page{padding:4px}.field-map-heading{padding:0 4px 4px}.field-map-heading h1{font-size:16px}.field-map-page>.field-download{display:none}.field-map-roles{position:absolute;top:4px;left:4px;z-index:4;width:180px;border-radius:10px}.site-map-field .site-map-view-switch{position:absolute;top:4px;left:190px;z-index:4;width:190px;border-radius:10px}.site-map-field .site-map-selection{left:auto;right:8px!important;width:300px;bottom:42px}.site-map-field .site-map-selection .site-map-row-card{max-height:calc(100dvh - 218px)}.site-map-field .site-map-row-actions{position:sticky;bottom:0;background:#fff;padding-top:6px;box-shadow:0 -6px 10px #fff}.site-map-field .site-map-imagery-note{position:absolute;right:4px;bottom:28px;z-index:4;margin:0;border-radius:4px;font-size:10px}}
 
 @media(orientation:landscape) and (max-height:550px){.site-map-field .site-map-zoom{top:64px;right:320px}}
+
+/* One map surface; the footer is present until the user expands the map. */
+.field-map-page.field-map-main{bottom:calc(82px + env(safe-area-inset-bottom))}
+.field-map-page.field-map-fullscreen{bottom:0}
+.site-map-mapbar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 8px;background:#fff;flex:none}
+.site-map-mapbar>small{color:var(--muted);font-size:12px}
+.site-map-layers{position:relative;font-size:13px}
+.site-map-layers>summary{min-height:44px;min-width:44px;padding:12px 8px;font-weight:700;color:var(--green-dark);cursor:pointer}
+.site-map-layers[open]{position:absolute;z-index:8;right:8px;top:4px;width:min(290px,calc(100% - 16px));border:1px solid var(--line);border-radius:12px;box-shadow:0 6px 22px #183b5c26;background:#fff;padding:4px 8px 10px}
+.site-map-layers[open]>summary{text-align:right}
+.site-map-field .site-map-view-switch,.site-map-task-switch{display:flex;gap:4px;padding:4px;margin:0;background:#eef3f6;border-radius:9px}
+.site-map-field .site-map-view-switch button,.site-map-task-switch button{flex:1;min-width:0;min-height:44px;font-size:12px;margin:0;padding:6px 4px;background:transparent}
+.site-map-field .site-map-view-switch [aria-pressed=true],.site-map-task-switch [aria-pressed=true]{background:#fff;color:var(--green-dark);font-weight:750}
+.site-map-task-switch{margin-top:8px}
+.site-map-layers>button{width:100%;min-height:44px;margin:8px 0 0}
+.site-map-layers .hint{font-size:11px;margin:8px 2px 0}
+.site-map-task-facts{display:flex;align-items:center;gap:6px;font-size:13px;line-height:1.4;margin:6px 0 0;overflow-wrap:anywhere}
+.site-map-type-dot{width:12px;height:12px;border-radius:3px;border:1px solid #15284033;flex:none}
+.site-map-row-card .site-map-row-actions{display:block}
+.site-map-row-card .site-map-row-actions button{width:100%;min-height:44px;margin:0}
+.site-map-row-card .site-map-sheet-details summary{padding:10px 0;min-height:40px}
+.site-map-field .site-map-imagery-note{font-size:10px;padding:2px 8px;margin:0;background:#fff;flex:none}
+.site-map-field .site-map-location-controls{bottom:34px}
+.site-map-field .site-map-location-controls [data-map-action=locate]{min-height:44px}
+.site-map-field .site-map-zoom{top:8px;right:8px}
+.site-map-field .site-map-zoom button{min-width:44px;min-height:44px}
+@media(orientation:landscape) and (max-height:550px){.site-map-field .site-map-view-switch{position:static;width:auto}.site-map-layers[open]{right:8px;top:4px}.field-map-page.field-map-main{bottom:72px}.site-map-field .site-map-selection{width:280px}.site-map-field .site-map-zoom{right:8px;top:8px}.site-map-mapbar{padding:0 8px}.site-map-mapbar .site-map-layers>summary{min-height:36px;padding:8px}}
+@media(orientation:landscape) and (max-height:550px){.site-map-field .site-map-selection{top:4px;bottom:32px}.site-map-field .site-map-stage[data-view=satellite] .site-map-selection{bottom:40px}.site-map-field .site-map-selection .site-map-row-card{display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:4px 8px;max-height:100%}.site-map-field .site-map-sheet-heading{grid-column:1/-1}.site-map-field .site-map-sheet-heading h3{font-size:18px}.site-map-field .site-map-task-facts{margin:0;font-size:12px}.site-map-field .site-map-sheet-details{display:none}.site-map-field .site-map-row-actions{position:static;padding:0;box-shadow:none}.site-map-field .site-map-row-actions button{font-size:12px;padding:6px}}
