@@ -358,7 +358,7 @@ export function createRowPlansFeature(api) {
         ordinal += span;
       }
       if (geometry.motorPosition !== null) {
-        const y = start+geometry.motorPosition*length,mark=motorMark(motor);
+        const y = start+geometry.motorPosition*length,mark={y:y-length/total/4,stroke:Math.min(3,length/total/2)};
         drawing += motorClearance(x,y,60,length/total,rowStart,row.rowNumber)+'<path d="M'+(x-3)+' '+mark.y+'H'+(x+63)+'" stroke="#ae3042" class="svg-pallet-motor" data-row-number="'+esc(row.rowNumber)+'" stroke-width="'+mark.stroke+'"/>';
       }
       return drawing+'<text x="'+(x+30)+'" y="'+(rowStart+rowLength+23)+'" text-anchor="middle" class="svg-small">Panel '+row.panelCount+'</text>';
