@@ -1,11 +1,11 @@
 import { createClient } from './vendor/supabase-client.js';
-import {createOfflineField,createParkImagery,validParkImagery} from './offline-field.js?v=motor-clearance-20261010';
+import {createOfflineField,createParkImagery,validParkImagery} from './offline-field.js?v=whole-panels-20261010';
 
 const supabase = createClient('https://oimiygdkrnsjzlivwafs.supabase.co','sb_publishable_WKPV0lAUCl1Lr53UujCR3g_zlQay4DS');
-import {createRowPlansFeature} from './row-plans.js?v=motor-clearance-20261010';
-import {createSiteMap} from './site-map.js?v=motor-clearance-20261010';
-import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=motor-clearance-20261010';
-import {googleMapsConfig} from './google-maps-config.js?v=motor-clearance-20261010';
+import {createRowPlansFeature} from './row-plans.js?v=whole-panels-20261010';
+import {createSiteMap} from './site-map.js?v=whole-panels-20261010';
+import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=whole-panels-20261010';
+import {googleMapsConfig} from './google-maps-config.js?v=whole-panels-20261010';
 let googleMapsLoader=null;
 let offlineAccess=false,offlineStarting=false;
 const parkImagery=createParkImagery();
