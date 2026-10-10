@@ -246,7 +246,7 @@ export function createRowPlansFeature(api) {
     return '<section class="card plan-diagram">'+compass+content+'<p class="hint">Schematic only. Distances are not to scale. Panel ordinals and post ordinals are independent.</p></section>';
   }
   function svgStart(title, height = 660) {
-    return '<svg class="plan-svg" viewBox="0 0 360 '+height+'" role="img" aria-label="'+esc(title)+'" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="plan-panel-lines" width="74" height="9" patternUnits="userSpaceOnUse"><rect width="74" height="9" fill="#183b5c"/><path d="M0 8.5h74M37 0v9" stroke="#5b7993" stroke-width=".6"/></pattern></defs>';
+    return '<svg class="plan-svg" viewBox="0 0 360 '+height+'" role="img" aria-label="'+esc(title)+'" xmlns="http://www.w3.org/2000/svg">';
   }
   function elementDetails(plan){
     if(!diagramItem)return '';
@@ -262,8 +262,27 @@ export function createRowPlansFeature(api) {
     }else if(diagramItem==='motor')content='<h3>Motor</h3><strong>'+(plan.motorAfterPanel==null?'Position not supplied':'After panel '+esc(plan.motorAfterPanel))+'</strong>'+(geometry?.motor?'<p>Post '+esc(geometry.motor.post)+' · Pile ID '+esc(geometry.motor.id)+'</p>':'');
     return content?'<section id="plan-element-details" class="plan-element-details" tabindex="-1" aria-label="Selected installation element">'+content+btn('Close details','plan-diagram-close','secondary')+'</section>':'';
   }
+  function motorGap(y,panelPitch,north) {
+    const height=Math.min(panelPitch,Math.max(0,(y-north)/2));
+    return {top:y-height,bottom:y};
+  }
+  function panelCells(x,top,bottom,width,first,quantity,motor,rowNumber) {
+    const northCount=motor?Math.max(0,Math.min(quantity,motor.after-first+1)):quantity;
+    const segments=[{top,bottom:motor?Math.min(bottom,motor.top):bottom,first,count:northCount}];
+    if(northCount<quantity)segments.push({top:Math.max(top,motor.bottom),bottom,first:first+northCount,count:quantity-northCount});
+    let svg='';
+    for(const segment of segments){
+      if(!segment.count||segment.bottom<=segment.top)continue;
+      const pitch=(segment.bottom-segment.top)/segment.count,inset=Math.min(.3,pitch/4);
+      for(let i=0;i<segment.count;i++){
+        const y=segment.top+i*pitch;
+        svg+='<rect class="svg-panel-cell" data-row-number="'+esc(rowNumber)+'" data-panel-number="'+(segment.first+i)+'" x="'+(x+inset)+'" y="'+(y+inset)+'" width="'+(width-2*inset)+'" height="'+(pitch-2*inset)+'" fill="#183b5c" stroke="#5b7993" stroke-width="'+(2*inset)+'"/><path d="M'+(x+width/2)+' '+(y+inset)+'V'+(y+pitch-inset)+'" stroke="#5b7993" stroke-width="'+(2*inset)+'"/>';
+      }
+    }
+    return svg;
+  }
   function motorClearance(x,y,width,panelPitch,north,rowNumber) {
-    const top=Math.max(north,y-panelPitch),height=y-top;
+    const {top}=motorGap(y,panelPitch,north),height=y-top;
     if(height<=0)return '';
     return '<g class="svg-motor-clearance" data-row-number="'+esc(rowNumber)+'" aria-label="Empty panel space immediately north of the motor"><title>No panel above the motor</title><rect x="'+x+'" y="'+top+'" width="'+width+'" height="'+height+'" fill="#e9eef3"/><path d="M'+(x+width/2)+' '+top+'V'+y+'" stroke="#8b9cae" stroke-width="3"/></g>';
   }
@@ -277,16 +296,18 @@ export function createRowPlansFeature(api) {
     const dx=mapped?geometry.south[0]-geometry.north[0]:0,dy=mapped?geometry.south[1]-geometry.north[1]:0,length=dx*dx+dy*dy;
     const position=p=>Math.max(0,Math.min(1,((p[0]-geometry.north[0])*dx+(p[1]-geometry.north[1])*dy)/length));
     const located=mapped&&length>0;
+    const motorPoint=geometry?.drive?.point,motorY=plan.motorAfterPanel===null?null:46+(located&&geometry.drive?.after===plan.motorAfterPanel&&validPoint(motorPoint)?position(motorPoint):plan.motorAfterPanel/total)*548;
+    const motor=motorY===null?null:{after:plan.motorAfterPanel,...motorGap(motorY,548/total,46)};
     const action=(id,label)=>' role="button" tabindex="0" data-action="plan-diagram-item" data-id="'+id+'" aria-label="'+esc(label)+'"';
     let index=0,svg=svgStart('Installation scheme for row '+plan.rowNumber+', numbered north to south').replace('role="img"','role="group"');
     svg+='<text x="180" y="26" text-anchor="middle" class="svg-title">Row '+esc(plan.rowNumber)+'</text><text x="54" y="26" text-anchor="middle" class="svg-small">West</text><text x="306" y="26" text-anchor="middle" class="svg-small">East</text><rect x="142" y="46" width="76" height="548" rx="4" fill="#e9eef3" stroke="#8b9cae"/>';
     plan.panelGroups.forEach((group,i)=>{
       const first=index+1,y=46+(located?position(sourceGroups[i].north):index/total)*548;index+=group.quantity;
       const end=46+(located?position(sourceGroups[i].south):index/total)*548,height=Math.max(5,end-y),middle=y+height/2;
-      svg+='<g'+action('group-'+i,'Group '+(i+1)+', panels '+first+' to '+index+', '+direction(group.positiveSide))+'><rect x="142" y="'+y+'" width="76" height="'+height+'" fill="url(#plan-panel-lines)"'+(diagramItem==='group-'+i?' stroke="#00875b" stroke-width="3"':'')+'/><rect x="142" y="'+y+'" width="5" height="'+height+'" fill="'+colorValue(typeById(group.typeId)?.color)+'"/><text x="132" y="'+(y+16)+'" text-anchor="end" class="svg-label">'+first+'–'+index+'</text><text x="180" y="'+(middle+5)+'" text-anchor="middle" class="svg-pallet-row-direction">'+(group.positiveSide==='N'?'↑ + N':group.positiveSide==='S'?'↓ + S':'? +')+'</text><text x="228" y="'+(y+16)+'" class="svg-small">Group '+(i+1)+'</text></g>';
+      svg+='<g'+action('group-'+i,'Group '+(i+1)+', panels '+first+' to '+index+', '+direction(group.positiveSide))+'>'+panelCells(142,y,end,76,first,group.quantity,motor,plan.rowNumber)+(diagramItem==='group-'+i?'<rect x="142" y="'+y+'" width="76" height="'+height+'" fill="none" stroke="#00875b" stroke-width="3"/>':'')+'<rect x="142" y="'+y+'" width="5" height="'+height+'" fill="'+colorValue(typeById(group.typeId)?.color)+'"/><text x="132" y="'+(y+16)+'" text-anchor="end" class="svg-label">'+first+'–'+index+'</text><text x="180" y="'+(middle+5)+'" text-anchor="middle" class="svg-pallet-row-direction">'+(group.positiveSide==='N'?'↑ + N':group.positiveSide==='S'?'↓ + S':'? +')+'</text><text x="228" y="'+(y+16)+'" class="svg-small">Group '+(i+1)+'</text></g>';
     });
     if(sum<total)svg+='<text x="228" y="'+(46+sum/total*548+22)+'" class="svg-small">'+(total-sum)+' pending</text>';
-    if(plan.motorAfterPanel!==null){const motorPoint=geometry?.drive?.point,y=46+(located&&geometry.drive?.after===plan.motorAfterPanel&&validPoint(motorPoint)?position(motorPoint):plan.motorAfterPanel/total)*548;svg+='<g'+action('motor','Motor after panel '+plan.motorAfterPanel)+'><rect x="137" y="'+(y-20)+'" width="86" height="40" fill="transparent"/>'+motorClearance(142,y,76,548/total,46,plan.rowNumber)+'<path d="M135 '+y+'H225" stroke="#ae3042" stroke-width="3"/><circle cx="180" cy="'+y+'" r="6" fill="#fff" stroke="#ae3042" stroke-width="3"/><text x="228" y="'+(y+4)+'" class="svg-motor">Motor · '+plan.motorAfterPanel+'</text></g>';}
+    if(motorY!==null){const y=motorY;svg+='<g'+action('motor','Motor after panel '+plan.motorAfterPanel)+'><rect x="137" y="'+(y-20)+'" width="86" height="40" fill="transparent"/>'+motorClearance(142,y,76,548/total,46,plan.rowNumber)+'<path d="M135 '+y+'H225" stroke="#ae3042" stroke-width="3"/><circle cx="180" cy="'+y+'" r="6" fill="#fff" stroke="#ae3042" stroke-width="3"/><text x="228" y="'+(y+4)+'" class="svg-motor">Motor · '+plan.motorAfterPanel+'</text></g>';}
     if(located)plan.dampers.forEach((d,i)=>{const post=geometry.posts?.find(p=>p.post===d.post&&p.side===d.side);if(!validPoint(post?.point))return;const x=d.side==='E'?306:54,y=46+position(post.point)*548;svg+='<g'+action('damper-'+i,'Damper post '+d.post+', '+(d.side==='E'?'East':'West'))+'><path d="M'+(d.side==='E'?220:140)+' '+y+'H'+x+'" stroke="#00875b" stroke-width="2" stroke-dasharray="3 3"/><rect x="'+(x-18)+'" y="'+(y-15)+'" width="36" height="30" rx="7" fill="#e0f6eb" stroke="#00875b" stroke-width="2"/><text x="'+x+'" y="'+(y+4)+'" text-anchor="middle" class="svg-damper">'+d.post+' '+d.side+'</text></g>';});
     svg+='<text x="180" y="623" text-anchor="middle" class="svg-small">'+total+' panel positions · North → South</text></svg>';
     const controls='<div class="plan-element-actions" aria-label="Installation element details">'+plan.panelGroups.map((g,i)=>btn('Group '+(i+1),'plan-diagram-item','secondary','group-'+i)).join('')+(plan.motorAfterPanel!==null?btn('Motor','plan-diagram-item','secondary','motor'):'')+plan.dampers.map((d,i)=>btn('Post '+d.post+' '+d.side,'plan-diagram-item','secondary','damper-'+i)).join('')+'</div>';
@@ -309,7 +330,8 @@ export function createRowPlansFeature(api) {
     const rowDrawing = (row,x,geometry) => {
       const rowStart = start+geometry.start*length;
       const rowLength = row.panelCount/total*length;
-      let drawing = '<text x="'+(x+30)+'" y="25" text-anchor="middle" class="svg-title">Row '+esc(row.rowNumber)+'</text><text x="'+(x+30)+'" y="46" text-anchor="middle" class="svg-small">'+row.panelCount+' panels</text><rect class="svg-pallet-row" data-row-number="'+esc(row.rowNumber)+'" x="'+x+'" y="'+rowStart+'" width="60" height="'+rowLength+'" fill="url(#plan-panel-lines)"/>';
+      const motor=geometry.motorPosition===null?null:{after:row.motorAfterPanel,...motorGap(start+geometry.motorPosition*length,length/total,rowStart)};
+      let drawing = '<text x="'+(x+30)+'" y="25" text-anchor="middle" class="svg-title">Row '+esc(row.rowNumber)+'</text><text x="'+(x+30)+'" y="46" text-anchor="middle" class="svg-small">'+row.panelCount+' panels</text><rect class="svg-pallet-row" data-row-number="'+esc(row.rowNumber)+'" x="'+x+'" y="'+rowStart+'" width="60" height="'+rowLength+'" fill="#e9eef3"/>'+panelCells(x,rowStart,rowStart+rowLength,60,1,row.panelCount,motor,row.rowNumber);
       let ordinal = 0;
       for (const group of row.panelGroups) {
         const span = Math.min(group.quantity,Math.max(0,row.panelCount-ordinal));
