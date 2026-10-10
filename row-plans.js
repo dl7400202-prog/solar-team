@@ -1,5 +1,5 @@
 /* Row installation plans are shared specifications; completion stays in Record work. */
-const ROUTES = new Set(['rowPlans', 'rowPlan', 'rowPalletDriver', 'rowPlanEdit', 'panelTypes', 'panelTypeEdit', 'rowPlanImport']);
+const ROUTES = new Set(['rowPlans', 'rowFieldMap', 'rowPlan', 'rowPalletDriver', 'rowPlanEdit', 'panelTypes', 'panelTypeEdit', 'rowPlanImport']);
 const MAX_INT = 2147483647;
 const copy = value => structuredClone(value);
 const present = value => value !== null && value !== undefined && String(value).trim() !== '';
@@ -144,7 +144,8 @@ export function createRowPlansFeature(api) {
   const recentKey='solar-team-last-row-v1';
   function recentRow(){try{const id=(api.storage||globalThis.localStorage)?.getItem(recentKey);return typeof id==='string'?planById(id):null;}catch{return null;}}
   function rememberRow(plan){try{(api.storage||globalThis.localStorage)?.setItem(recentKey,plan.id);}catch{/* Browsing still works when storage is unavailable. */}}
-  function openRow(id,pallets=false){if(!planById(id))return;selectedRow=id;palletNeighborId=null;diagramItem=null;tab=pallets?'diagram':'plan';mode=pallets?'pallets':'panels';api.navigate('rowPlan');}
+  let rowParent='rowPlans';
+  function openRow(id,pallets=false){if(!planById(id))return;rowParent=currentScreen==='rowFieldMap'?'rowFieldMap':'rowPlans';selectedRow=id;palletNeighborId=null;diagramItem=null;tab=pallets?'diagram':'plan';mode=pallets?'pallets':'panels';if(pallets==='driver'){palletNeighborId=driverPair(planById(id))?.right?.id||'';api.navigate('rowPalletDriver');}else api.navigate('rowPlan');}
   let listMode='list',siteMap=null,visibleRows=60;
   let geometryRows=null,geometryIndex=new Map();
   const mapRecord = plan => {const rows=database().siteMap?.rows;if(rows!==geometryRows){geometryRows=rows;geometryIndex=new Map((Array.isArray(rows)?rows:[]).map(r=>[r.field+'\0'+r.rowNumber,r]));}return geometryIndex.get(plan.field+'\0'+plan.rowNumber);};
@@ -187,8 +188,13 @@ export function createRowPlansFeature(api) {
     const views='<div class="plan-tabs" role="group" aria-label="Rows view">'+['list','map'].map(v=>'<button type="button" data-action="plan-list-mode" data-id="'+v+'" class="'+(listMode===v?'active':'')+'" aria-pressed="'+(listMode===v)+'">'+(v==='list'?'List':'Map')+'</button>').join('')+'</div>';
     const tools='<details class="plan-tools"><summary>Row tools</summary><div class="plan-toolbar">'+btn('Add row plan', 'plan-new', 'compact primary')+btn('Panel types', 'plan-types', 'compact')+btn('Import plans', 'plan-import', 'compact')+'</div></details>';
     const recent=recentRow(),resume=recent&&!teamContext&&!field&&!query?'<button type="button" class="plan-resume" data-action="plan-row" data-id="'+esc(recent.id)+'"><span><small>Continue where you left off</small><strong>Row '+esc(recent.rowNumber)+' · '+esc(recent.field)+'</strong></span><span aria-hidden="true">→</span></button>':'';
-    renderPage('Rows', '<div class="rows-hub">'+context+resume+'<form data-form="plan-filter" class="plan-filters"><div class="plan-search-line"><label><span class="sr-only">Field</span><select name="field">'+option('', 'All fields', field)+selectOptions(fields(), field)+'</select></label><label><span class="sr-only">Find row, type or post ID</span><input name="query" type="search" value="'+esc(query)+'" maxlength="60" placeholder="Row / ID" inputmode="search" enterkeyhint="search"></label><button type="submit" class="compact" aria-label="Find rows">Find</button></div>'+(field||query?'<div class="plan-filter-summary"><small>'+esc(field||'All fields')+(query?' · '+esc(query):'')+'</small>'+btn('Clear','plan-reset','text-button')+'</div>':'')+'</form>'+views+'<div id="plan-results">'+(listMode==='map'?(mapFeature()?.html(field,query)||'<section class="empty">Map is unavailable.</section>'):listRows())+'</div>'+tools+'</div>');
+    renderPage('Rows', '<div class="rows-hub">'+context+resume+'<form data-form="plan-filter" class="plan-filters"><div class="plan-search-line"><label><span class="sr-only">Field</span><select name="field">'+option('', 'All fields', field)+selectOptions(fields(), field)+'</select></label><label><span class="sr-only">Find row, type or post ID</span><input name="query" type="search" value="'+esc(query)+'" maxlength="60" placeholder="Row / ID" inputmode="search" enterkeyhint="search"></label><button type="submit" class="compact" aria-label="Find rows">Find</button></div>'+(field||query?'<div class="plan-filter-summary"><small>'+esc(field||'All fields')+(query?' · '+esc(query):'')+'</small>'+btn('Clear','plan-reset','text-button')+'</div>':'')+'</form>'+views+(listMode==='map'?(api.offlinePanel?.()||''):'')+'<div id="plan-results">'+(listMode==='map'?(mapFeature()?.html(field,query)||'<section class="empty">Map is unavailable.</section>'):listRows())+'</div>'+tools+'</div>');
     if(listMode==='map'&&typeof document!=='undefined')mapFeature()?.mount(document.querySelector('.site-map'));
+  }
+  function drawField(){
+    const filterForm='<form data-form="plan-filter" class="field-map-search"><label><span class="sr-only">Field</span><select name="field">'+option('','All fields',field)+selectOptions(fields(),field)+'</select></label><label><span class="sr-only">Find row, type or post ID</span><input name="query" type="search" value="'+esc(query)+'" maxlength="60" placeholder="Row / ID" inputmode="search" enterkeyhint="search"></label><button type="submit" aria-label="Find rows">Find</button>'+(query?'<button type="button" class="text-button" data-action="plan-reset" aria-label="Clear row search">×</button>':'')+'</form>';
+    api.draw('<section class="field-map-page" aria-label="Field mode"><header class="field-map-heading"><div><h1 tabindex="-1">Field mode</h1><small>'+esc(api.offlineNote?.()||'Solar Park Nagbøl')+'</small></div><button type="button" class="secondary" data-action="plan-field-close" aria-label="Exit field mode">×</button></header>'+filterForm+(api.offlinePanel?.()||'')+(mapFeature()?.html(field,query,{fullscreen:true})||'<p>Map unavailable.</p>')+'</section>');
+    if(typeof document!=='undefined')mapFeature()?.mount(document.querySelector('.site-map'));
   }
   function drawPlan() {
     const plan = planById(selectedRow);
@@ -428,17 +434,19 @@ export function createRowPlansFeature(api) {
   }
   function render(screen) {
     currentScreen=screen;
-    if(screen!=='rowPlans'||listMode!=='map')siteMap?.hide();
+    if(screen!=='rowFieldMap'&&(screen!=='rowPlans'||listMode!=='map'))siteMap?.hide();
     if(!writable()&&['rowPlanEdit','panelTypeEdit','rowPlanImport'].includes(screen)){renderPage('Viewing only','<section class="card"><p>This account has read-only access.</p></section>');return;}
-    ({rowPlans:drawList,rowPlan:drawPlan,rowPalletDriver:drawDriver,rowPlanEdit:drawEdit,panelTypes:drawTypes,panelTypeEdit:drawTypeEdit,rowPlanImport:drawImport}[screen] || drawList)();
+    ({rowPlans:drawList,rowFieldMap:drawField,rowPlan:drawPlan,rowPalletDriver:drawDriver,rowPlanEdit:drawEdit,panelTypes:drawTypes,panelTypeEdit:drawTypeEdit,rowPlanImport:drawImport}[screen] || drawList)();
   }
   async function handleAction(action,id) {
     if (!action.startsWith('plan-')) return false;
     if(!writable()&&(editorActions.has(action)||/^plan-(add|remove)-/.test(action))){api.feedback('This account has read-only access.');return true;}
     if (action==='plan-open') {teamContext=null;parent={screen:'settings',id:null};field='';query='';api.navigate('rowPlans');}
+    else if(action==='plan-field-open'){teamContext=null;listMode='map';api.navigate('rowFieldMap');}
+    else if(action==='plan-field-close'){listMode='map';api.navigate('rowPlans');}
     else if (action==='plan-hub') {teamContext=null;parent={screen:'today',id:null};api.navigate('rowPlans');}
     else if (action==='plan-more') {const previous=visibleRows;visibleRows+=60;render('rowPlans');if(typeof document!=='undefined')document.querySelectorAll('.plan-row-card')[previous]?.focus({preventScroll:true});}
-    else if (action==='plan-reset') {field='';query='';visibleRows=60;render('rowPlans');}
+    else if (action==='plan-reset') {field='';query='';visibleRows=60;render(currentScreen==='rowFieldMap'?'rowFieldMap':'rowPlans');}
     else if (action==='plan-list-mode') {if(['list','map'].includes(id))listMode=id;render('rowPlans');}
     else if (action==='plan-show-map') {const plan=planById(id);if(plan){field=plan.field;query='';listMode='map';mapFeature()?.selectRow(mapRecord(plan));api.navigate('rowPlans');}}
     else if (action==='plan-list') api.navigate('rowPlans');
@@ -476,7 +484,7 @@ export function createRowPlansFeature(api) {
   async function handleForm(kind,form) {
     if (!kind.startsWith('plan-')) return false;
     if(!writable()&&kind!=='plan-filter'){api.feedback('This account has read-only access.');return true;}
-    if (kind==='plan-filter') {field=String(form.get('field')||'');query=String(form.get('query')||'').trim();visibleRows=60;render('rowPlans');}
+    if (kind==='plan-filter') {field=String(form.get('field')||'');query=String(form.get('query')||'').trim();visibleRows=60;render(currentScreen==='rowFieldMap'?'rowFieldMap':'rowPlans');}
     else if (kind==='plan-save') {
       if(!draft){api.feedback('Open the row constructor again.');return true;}
       draft=readDraft(form);editDirty=true;
@@ -500,7 +508,7 @@ export function createRowPlansFeature(api) {
   }
   return {
     hasScreen:screen=>ROUTES.has(screen),render,handleAction,handleForm,handleInput,
-    suspendIfHidden(screen){if(screen!=='rowPlans'||listMode!=='map')siteMap?.hide();},
+    suspendIfHidden(screen){if(screen!=='rowFieldMap'&&(screen!=='rowPlans'||listMode!=='map'))siteMap?.hide();},
     reload(screen) {
       if(screen==='rowPlanEdit') {
         const latest=planById(editBase?.id || draft?.id || selectedRow);
@@ -509,7 +517,7 @@ export function createRowPlansFeature(api) {
         const latest=typeById(selectedType);if(latest)typeBase=copy(latest);
       } else if(screen==='rowPlanImport') importPreview=null;
     },
-    back(screen) {if(screen==='rowPlans')return parent;if(screen==='rowPlan')return {screen:'rowPlans',id:null};if(screen==='rowPalletDriver')return {screen:'rowPlan',id:null};if(screen==='rowPlanEdit')return {screen:editBase?'rowPlan':'rowPlans',id:null};if(screen==='panelTypeEdit')return {screen:'panelTypes',id:null};if(screen==='panelTypes')return {screen:typeParent,id:null};if(screen==='rowPlanImport')return {screen:'rowPlans',id:null};return null;},
+    back(screen) {if(screen==='rowFieldMap')return {screen:'rowPlans',id:null};if(screen==='rowPlans')return parent;if(screen==='rowPlan')return {screen:rowParent,id:null};if(screen==='rowPalletDriver')return {screen:'rowPlan',id:null};if(screen==='rowPlanEdit')return {screen:editBase?'rowPlan':'rowPlans',id:null};if(screen==='panelTypeEdit')return {screen:'panelTypes',id:null};if(screen==='panelTypes')return {screen:typeParent,id:null};if(screen==='rowPlanImport')return {screen:'rowPlans',id:null};return null;},
     navDestination:screen=>teamContext?'today':['panelTypes','panelTypeEdit'].includes(screen)&&typeParent==='settings'?'settings':'rows',
     openTeam(team) {teamContext=copy(team);parent={screen:'team',id:team.id};field=team.field;query='';api.navigate('rowPlans');}
   };

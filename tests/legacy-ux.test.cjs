@@ -4,6 +4,7 @@ const assert=require('node:assert/strict');
 const {test}=require('node:test');
 const source=readFileSync(require('node:path').resolve(process.env.SOLAR_BASELINE_PATH||require('node:path').join(__dirname,'../app.js')),'utf8').replace(/^import .*$/gm,'');
 const featureSource=readFileSync(require('node:path').join(__dirname,'../row-plans.js'),'utf8').replace(/^export /gm,'');
+const offlineSource=readFileSync(require('node:path').join(__dirname,'../offline-field.js'),'utf8').replace(/^export /gm,'');
 const weatherFunctionSource=readFileSync(require('node:path').join(__dirname,'./fixtures/index.ts'),'utf8');
 const peopleUpgradeSource=readFileSync(require('node:path').join(__dirname,'./fixtures/people-groups-photos.sql'),'utf8');
 const assignmentUpgradeSource=readFileSync(require('node:path').join(__dirname,'./fixtures/assignment-history-attention.sql'),'utf8');
@@ -35,7 +36,7 @@ function harness(){
   const document={querySelector:get,querySelectorAll:()=>[],addEventListener(){},hidden:false,activeElement:null};
   class Data{constructor(form){this.values=form.values}get(k){return this.values[k]??null}getAll(k){const v=this.values[k];return Array.isArray(v)?v:v?[v]:[]}}
   const ctx=vm.createContext({createClient:()=>client,document,window:{addEventListener(){},scrollTo(){},confirm:()=>confirm},FormData:Data,structuredClone,console,setInterval(){},setTimeout(){return 1},clearTimeout(){},crypto:{randomUUID:()=> 'new-id'},Date,Intl});
-  vm.runInContext(featureSource,ctx);vm.runInContext(source,ctx);
+  vm.runInContext(offlineSource,ctx);vm.runInContext(featureSource,ctx);vm.runInContext(source.replace(/^\(async\(\)=>.*$/gm,''),ctx);
   const run=s=>vm.runInContext(s,ctx);
   run(`user={id:'u',email:'demo@example.test'};ready=true;accessRole='editor';db={people:[{id:'a',name:'Mykola Zihura',role:'Technician',availability:'ON_SITE',active:true},{id:'b',name:'Mykola Yakibchuk',role:'Technician',availability:'ON_SITE',active:true},{id:'c',name:'Off Person',role:'Technician',availability:'OFF',active:true},{id:'d',name:'Archived Person',role:'Technician',availability:'ON_SITE',active:false}],fields:['North'],workTypes:['Panels','Bolts'],assignmentHistory:[],teams:[{id:'t',number:1,date:localDay(),members:['a'],field:'North',work:'Panels',from:120,to:null,status:'IN_PROGRESS',note:'',closed:false,issueResolved:false}]};`);
   return {run,nodes,get,calls,readQueries,cloud:row=>cloudRow=row,fail:e=>failure=e,confirm:v=>confirm=v,submit:async(kind,values,intent)=>{ctx.event={preventDefault(){},target:{dataset:{form:kind},values},submitter:{value:intent}};return run('submitForm(event)')}};
@@ -136,3 +137,5 @@ test('viewer logout affects only this device and an access lookup failure stays 
 });
 
 
+
+test('saved park cannot edit even if an earlier online role was editor, and staffing remains inaccessible',async()=>{const h=harness();h.run("offlineAccess=true;accessRole='editor';screen='rowPlans'");assert.equal(h.run('canEdit()'),false);h.run("navigate('people')");assert.equal(h.run('screen'),'rowPlans');await h.run("act('create')");await h.submit('create',{member:['a'],field:'North',work:'Panels',from:'120'});assert.equal(h.calls.length,0);assert.doesNotMatch(h.run('nav()'),/data-id="people"|data-id="history"/);assert.match(h.run('nav()'),/Reconnect/);});

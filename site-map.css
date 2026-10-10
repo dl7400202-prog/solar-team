@@ -28,7 +28,9 @@
 .site-map-row-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .site-map-row-actions button{margin:0;min-height:44px;font-size:12px;padding:10px 5px}
 .site-map .plan-notice{margin-top:0;font-size:12px}
-.site-map-view-switch{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;border-radius:10px;background:#eaf2ed;margin-bottom:12px}
+.site-map-view-switch{display:flex;gap:6px;padding:4px;border-radius:10px;background:#eaf2ed;margin-bottom:12px}
+.site-map-view-switch button{flex:1}
+.site-map-imagery-note{margin:0 0 6px;padding:5px 8px;background:#fff;font-size:11px;line-height:1.4;color:var(--muted)}
 .site-map-view-switch button{margin:0;min-height:40px;padding:8px;font-size:13px;border:0;background:transparent;color:#53645a}
 .site-map-view-switch [aria-pressed=true]{background:#fff;color:#006b49;box-shadow:0 1px 4px #15284018;font-weight:700}
 .site-map-google-surface{position:relative;border:1px solid #cee2d8;border-radius:12px;overflow:hidden;background:#edf6ef;height:min(55vh,480px);min-height:340px}
@@ -62,3 +64,37 @@
 
 /* Leave Google attribution and responsive copyright rows visible. */
 .site-map-stage[data-view=satellite] .site-map-selection{bottom:80px}
+
+.field-map-open{margin:0 0 12px;width:100%;font-weight:750}
+.field-download{background:#fff;border:1px solid var(--line);border-radius:12px;margin:0 0 12px;position:relative}
+.field-download summary{display:flex;align-items:center;gap:8px;justify-content:space-between;min-height:44px;padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer}
+.field-download-indicator{font-size:11px;font-weight:500;color:var(--muted)}
+.field-download-ui{padding:0 12px 12px}.field-download-ui p{margin:4px 0 8px;font-size:12px}.field-download-ui button{margin:10px 0 0;width:100%}
+.field-map-page{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;min-width:0;overflow:hidden;background:var(--bg);padding:calc(8px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom))}
+.field-map-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:2px 4px 8px;flex:none}
+.field-map-heading h1{font-size:20px;letter-spacing:-.3px;margin:0}.field-map-heading small{font-size:11px}
+.field-map-heading button{width:44px;height:44px;margin:0;font-size:25px;flex:none}
+.field-map-search{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) 48px auto;gap:5px;flex:none;margin:0 0 6px}
+.field-map-search label{margin:0;min-width:0}.field-map-search input,.field-map-search select{margin:0;min-height:44px;height:44px;min-width:0;width:100%;padding:8px;font-size:13px}
+.field-map-search button{margin:0;padding:0 8px;font-size:12px;min-width:44px;background:#e7f0fa;color:#0755ad;border-radius:10px}
+.field-map-page>.field-download{flex:none;margin-bottom:6px}.field-map-page>.field-download .field-download-ui{position:absolute;left:-1px;right:-1px;top:100%;z-index:8;background:#fff;box-shadow:0 8px 16px #15284024;border:1px solid var(--line);border-radius:0 0 12px 12px;max-height:60dvh;overflow:auto}
+.site-map-field{position:relative;flex:1;display:flex;flex-direction:column;padding:0;min-height:0;border-radius:12px;background:#edf6ef}
+.site-map-field .site-map-heading,.site-map-field .site-map-tips,.site-map-field .site-map-alignment{display:none}
+.field-map-roles{display:flex;gap:4px;padding:4px;background:#fff;flex:none}
+.field-map-roles button{flex:1;min-height:40px;margin:0;font-size:13px;background:transparent;color:var(--muted)}
+.field-map-roles [aria-pressed=true]{background:#e5f3ec;color:var(--green-dark);font-weight:750}
+.site-map-field .site-map-view-switch{display:flex;margin:0;padding:4px;background:#fff;border-radius:0;flex:none}.site-map-field .site-map-view-switch button{flex:1;min-height:36px}
+.site-map-field .site-map-location-controls{position:absolute;left:8px;bottom:38px;z-index:4;margin:0;gap:5px;flex-wrap:wrap;max-width:calc(100% - 16px);pointer-events:none}
+.site-map-field .site-map-location-controls button{flex:none;width:auto;background:#fff;box-shadow:0 2px 8px #15284020;font-size:12px;pointer-events:auto;padding:8px 10px;border-radius:10px}
+.site-map-field .site-map-location-controls [aria-pressed=true]{background:#00875b;color:#fff}
+.site-map-field .site-map-status{margin:0;padding:5px 8px;background:#fff;order:9;font-size:11px;flex:none;max-height:50px;overflow:auto}
+.site-map-field .site-map-nearest{margin:0;padding:4px 8px;background:#fff;font-size:11px;order:10;flex:none}
+.site-map-field .site-map-stage{flex:1;min-height:0}.site-map-field .site-map-plan,.site-map-field .site-map-surface{height:100%;border:0;border-radius:0}
+.site-map-field .site-map-svg,.site-map-field .site-map-google-surface,.site-map-field .site-map-stage:has(.site-map-row-card) .site-map-svg,.site-map-field .site-map-stage:has(.site-map-row-card) .site-map-google-surface{height:100%;min-height:0;max-height:none;border-radius:0}
+.site-map-field .site-map-selection{bottom:74px;left:8px;right:8px}.site-map-field .site-map-stage[data-view=satellite] .site-map-selection{bottom:102px}
+.site-map-field .site-map-selection .site-map-row-card{max-height:min(290px,50dvh);box-shadow:0 5px 22px #183b5c38}
+.site-map-field .site-map-row-actions:has([data-map-action=driver]){grid-template-columns:1fr}
+.field-offline-nav{display:flex;gap:8px;padding:8px}.field-offline-nav button{flex:1;margin:0;min-height:48px;font-size:13px}
+@media(orientation:landscape) and (max-height:550px){.field-map-page{padding:4px}.field-map-heading{padding:0 4px 4px}.field-map-heading h1{font-size:16px}.field-map-page>.field-download{display:none}.field-map-roles{position:absolute;top:4px;left:4px;z-index:4;width:180px;border-radius:10px}.site-map-field .site-map-view-switch{position:absolute;top:4px;left:190px;z-index:4;width:190px;border-radius:10px}.site-map-field .site-map-selection{left:auto;right:8px!important;width:300px;bottom:42px}.site-map-field .site-map-selection .site-map-row-card{max-height:calc(100dvh - 218px)}.site-map-field .site-map-row-actions{position:sticky;bottom:0;background:#fff;padding-top:6px;box-shadow:0 -6px 10px #fff}.site-map-field .site-map-imagery-note{position:absolute;right:4px;bottom:28px;z-index:4;margin:0;border-radius:4px;font-size:10px}}
+
+@media(orientation:landscape) and (max-height:550px){.site-map-field .site-map-zoom{top:64px;right:320px}}
