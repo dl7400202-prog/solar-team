@@ -142,7 +142,7 @@ test('viewer and unknown role reject direct actions, edit routes and writes befo
 
 test('viewer logout affects only this device and an access lookup failure stays closed',async()=>{
  const h=harness();h.run("accessRole='viewer';supabase.auth.signOut=async options=>{globalThis.logoutScope=options.scope;return {}}");
- await h.run("act('logout')");assert.equal(h.run('logoutScope'),'local');assert.equal(h.run('accessRole'),null);
+ await h.run("act('logout')");assert.equal(h.run('logoutScope'),'local');assert.equal(h.run('accessRole'),null);assert.equal(h.run('screen'),'rowPlans');
  const denied=harness();denied.run("accessRole='editor';supabase.rpc=async()=>({error:{message:'lookup failed'}})");
  await denied.run("loadCloud(user)");assert.equal(denied.run('accessRole'),null);assert.equal(denied.run('ready'),false);
  assert.equal(await denied.run("change('initialize',{}, {})"),false);assert.equal(denied.calls.length,0);
