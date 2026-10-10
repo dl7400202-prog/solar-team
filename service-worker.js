@@ -1,10 +1,18 @@
-const CACHE = 'solar-team-v31', BUILD='panel-instructions-20261010c';
-const ASSETS = ['./', './index.html', './styles.css?v=panel-instructions-20261010c', './app.js?v=panel-instructions-20261010c', './row-plans.js?v=panel-instructions-20261010c', './row-plans.css?v=panel-instructions-20261010c', './site-map.js?v=panel-instructions-20261010c', './site-map.css?v=panel-instructions-20261010c', './offline-field.js?v=panel-instructions-20261010c', './vendor/proj4-2.22.0.js', './vendor/supabase-client.js', './vendor/supabase-2.105.0.js', './google-map.js?v=panel-instructions-20261010c', './google-maps-config.js?v=panel-instructions-20261010c', './manifest.webmanifest', './icon.svg'];
-self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting())));
+const CACHE = 'solar-team-v32', BUILD='panel-instructions-20261010d';
+const ASSETS = ['./', './index.html', './styles.css?v=panel-instructions-20261010d', './app.js?v=panel-instructions-20261010d', './row-plans.js?v=panel-instructions-20261010d', './row-plans.css?v=panel-instructions-20261010d', './site-map.js?v=panel-instructions-20261010d', './site-map.css?v=panel-instructions-20261010d', './offline-field.js?v=panel-instructions-20261010d', './vendor/proj4-2.22.0.js', './vendor/supabase-client.js', './vendor/supabase-2.105.0.js', './google-map.js?v=panel-instructions-20261010d', './google-maps-config.js?v=panel-instructions-20261010d', './manifest.webmanifest', './icon.svg'];
+async function shellReady(cache) {
+  const responses=await Promise.all(ASSETS.map(url=>cache.match(url)));
+  return responses.every(response=>response?.ok)&&(await responses[1].text()).includes('src="app.js?v='+BUILD+'"');
+}
+self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(async cache=>{
+  await cache.addAll(ASSETS.map(url=>new Request(new URL(url,self.location.href),{cache:'reload'})));
+  if(!await shellReady(cache))throw new Error('Cached index belongs to a different build');
+  await self.skipWaiting();
+})));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('solar-team-v') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('message', event => {
   if(event.data?.type!=='FIELD_SHELL_STATUS'||!event.ports?.[0])return;
-  event.waitUntil(caches.open(CACHE).then(async cache=>{const responses=await Promise.all(ASSETS.map(url=>cache.match(url)));event.ports[0].postMessage({build:BUILD,ready:responses.every(response=>response?.ok)});}));
+  event.waitUntil(caches.open(CACHE).then(async cache=>{event.ports[0].postMessage({build:BUILD,ready:await shellReady(cache)});}));
 });
 self.addEventListener('fetch', event => {
   if(event.request.method!=='GET')return;
