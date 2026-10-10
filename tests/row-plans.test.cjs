@@ -35,6 +35,33 @@ function editForm(p) {
   return f;
 }
 
+test('last row resumes after feature restart and unavailable storage or deleted rows do not block browsing',async()=>{
+  const {createRowPlansFeature}=await load(),memory=new Map(),storage={getItem:key=>memory.get(key),setItem:(key,value)=>memory.set(key,value)};
+  const first=harness(createRowPlansFeature);first.api.storage=storage;await first.feature.handleAction('plan-row','South-901');
+  const next=harness(createRowPlansFeature);next.api.storage=storage;await next.feature.handleAction('plan-hub');assert.match(next.state.html,/Continue where you left off/);
+  await next.feature.handleAction('plan-row','South-901');assert.equal(next.state.screen,'rowPlan');assert.equal(next.events.filter(e=>e.kind).length,0);
+  next.db.rowPlans=[];await next.feature.handleAction('plan-hub');assert.doesNotMatch(next.state.html,/Continue where you left off/);
+  const blocked=harness(createRowPlansFeature);blocked.api.storage={getItem:()=>{throw Error('blocked')},setItem:()=>{throw Error('blocked')}};
+  await blocked.feature.handleAction('plan-row','South-901');assert.equal(blocked.state.screen,'rowPlan');await blocked.feature.handleAction('plan-hub');assert.match(blocked.state.html,/Rows/);
+});
+
+test('viewer driver view keeps the selected pair, supports changing the right row and returns to pallets without writes',async()=>{
+  const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan({motorAfterPanel:46}),plan({id:'South-902',rowNumber:902,panelCount:75,motorAfterPanel:21,panelGroups:plan().panelGroups.slice(0,3)}),plan({id:'South-903',rowNumber:903,motorAfterPanel:46})]);
+  h.api.canEdit=()=>false;await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','pallets');await h.feature.handleAction('plan-driver');
+  assert.equal(h.state.screen,'rowPalletDriver');assert.match(h.state.html,/5 pallets/);assert.equal((h.state.html.match(/class="svg-auto-pallet"/g)||[]).length,5);assert.match(h.state.html,/Label on the left when facing/);
+  assert.deepEqual(h.feature.back('rowPalletDriver'),{screen:'rowPlan',id:null});h.feature.handleInput({dataset:{palletNeighbor:''},value:'South-903'});assert.match(h.state.html,/6 pallets/);
+  await h.feature.handleAction('plan-driver-close');assert.equal(h.state.screen,'rowPlan');assert.match(h.state.html,/200 panels/);assert.equal(h.events.filter(e=>e.kind).length,0);
+});
+
+test('combined scheme uses source post positions only for a matching layout and element details expose original IDs',async()=>{
+  const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan({motorAfterPanel:46})]);
+  h.db.siteMap={rows:[{rowNumber:901,field:'South',panelCount:100,north:[0,100],south:[0,0],drive:{after:46,point:[0,54]},motor:{post:8,id:8008},posts:[{post:2,side:'E',id:8002,point:[0,95]}],groups:plan().panelGroups.map((g,i)=>({first:i*25+1,last:(i+1)*25,id:'STRING-'+i,north:[0,100-i*25],south:[0,75-i*25],crossesDrive:i===1}))}]};
+  await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','panels');assert.match(h.state.html,/class="svg-damper"/);assert.doesNotMatch(h.state.html,/Post placement on this scheme is unavailable/);
+  await h.feature.handleAction('plan-diagram-item','group-1');assert.match(h.state.html,/String ID STRING-1/);assert.match(h.state.html,/21 north \+ 4 south/);await h.feature.handleAction('plan-diagram-close');assert.doesNotMatch(h.state.html,/id="plan-element-details"/);
+  await h.feature.handleAction('plan-diagram-item','damper-0');assert.match(h.state.html,/Pile ID 8002/);await h.feature.handleAction('plan-diagram-item','motor');assert.match(h.state.html,/Pile ID 8008/);
+  h.db.siteMap.rows[0].panelCount=75;await h.feature.handleAction('plan-section','panels');assert.doesNotMatch(h.state.html,/class="svg-damper"/);assert.match(h.state.html,/Post placement on this scheme is unavailable/);assert.equal(h.events.filter(e=>e.kind).length,0);
+});
+
 test('Rows hub limits the initial list, expands it and prioritizes an exact row number',async()=>{
   const {createRowPlansFeature}=await load();
   const rows=Array.from({length:75},(_,i)=>plan({id:'North-'+(100+i),field:'North',rowNumber:100+i}));

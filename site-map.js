@@ -72,18 +72,19 @@ export function createSiteMap(api) {
     if(mode==='satellite'&&state==='error'){follow=false;tracker.stop();}
     paintLocation();
   }});
+  let selectionKey=null;
   const button=(label,action,extra='')=>'<button type="button" data-map-action="'+action+'" '+extra+'>'+label+'</button>';
   function html(field='',term=''){
     if(filter!==field||query!==term){view=null;selected=null;pendingSearch=true;follow=false;}
     filter=field;query=term;
     const rows=filtered();
-    return '<section class="site-map card" aria-label="Site map"><div class="site-map-heading"><div><h2>Site map</h2><small>'+rows.length+' mapped rows · North at the top</small></div>'+button('All rows','fit','class="compact"')+'</div>'+(satellite?'<div class="site-map-view-switch" role="group" aria-label="Map view">'+button('Row plan','view-plan','aria-pressed="'+(mode==='plan')+'"')+button('Satellite','view-satellite','aria-pressed="'+(mode==='satellite')+'"')+'</div>':'')+(!aligned()?'<p class="plan-notice site-map-alignment">GPS alignment awaits the coordinate system from the original project.</p>':'')+'<div class="site-map-location-controls">'+button('◎ My position','locate','class="secondary"')+button('Follow me','follow','class="secondary" aria-pressed="false"')+button('Stop location','stop','class="text-button" hidden')+'</div><p class="site-map-status hint" role="status"></p><div class="site-map-plan" '+(mode==='plan'?'':'hidden')+'><div class="site-map-surface"><svg class="site-map-svg" tabindex="0" role="group" aria-label="Row map. Drag to pan, pinch or use plus and minus to zoom." xmlns="http://www.w3.org/2000/svg"></svg><span class="site-map-north" aria-hidden="true">↑<br>N</span><div class="site-map-zoom" aria-label="Map zoom">'+button('+','zoom-in','aria-label="Zoom in"')+button('−','zoom-out','aria-label="Zoom out"')+'</div><div class="site-map-scale" aria-hidden="true"></div></div></div><div class="site-map-google-surface" '+(mode==='satellite'?'':'hidden')+'><div class="site-map-google-canvas" role="region" aria-label="Satellite map"></div><div class="site-map-google-message" role="status">Loading Google Maps…</div></div><p class="site-map-nearest hint"></p><div class="site-map-selection" aria-live="polite"></div><details class="site-map-tips"><summary>Map tips & privacy</summary><p class="hint site-map-help">Drag to move · Pinch to zoom · Tap a row to open its details. Distances use the source coordinates. Device location is not saved.</p></details>'+((query&&!searchResults().length)||!rows.length?'<p class="plan-notice">No mapped rows match this search. Clear the filters to find a row.</p>':'')+'</section>';
+    return '<section class="site-map card" aria-label="Site map"><div class="site-map-heading"><div><h2>Site map</h2><small>'+rows.length+' mapped rows · North at the top</small></div>'+button('All rows','fit','class="compact"')+'</div>'+(satellite?'<div class="site-map-view-switch" role="group" aria-label="Map view">'+button('Row plan','view-plan','aria-pressed="'+(mode==='plan')+'"')+button('Satellite','view-satellite','aria-pressed="'+(mode==='satellite')+'"')+'</div>':'')+(!aligned()?'<p class="plan-notice site-map-alignment">GPS alignment awaits the coordinate system from the original project.</p>':'')+'<div class="site-map-location-controls">'+button('◎ My position','locate','class="secondary"')+button('Follow me','follow','class="secondary" aria-pressed="false"')+button('Stop location','stop','class="text-button" hidden')+'</div><p class="site-map-status hint" role="status"></p><div class="site-map-stage" data-view="'+mode+'"><div class="site-map-plan" '+(mode==='plan'?'':'hidden')+'><div class="site-map-surface"><svg class="site-map-svg" tabindex="0" role="group" aria-label="Row map. Drag to pan, pinch or use plus and minus to zoom." xmlns="http://www.w3.org/2000/svg"></svg><span class="site-map-north" aria-hidden="true">↑<br>N</span><div class="site-map-zoom" aria-label="Map zoom">'+button('+','zoom-in','aria-label="Zoom in"')+button('−','zoom-out','aria-label="Zoom out"')+'</div><div class="site-map-scale" aria-hidden="true"></div></div></div><div class="site-map-google-surface" '+(mode==='satellite'?'':'hidden')+'><div class="site-map-google-canvas" role="region" aria-label="Satellite map"></div><div class="site-map-google-message" role="status">Loading Google Maps…</div></div><div class="site-map-selection" aria-live="polite"></div></div><p class="site-map-nearest hint"></p><details class="site-map-tips"><summary>Map tips & privacy</summary><p class="hint site-map-help">Drag to move · Pinch to zoom · Tap a row to open its details. Distances use the source coordinates. Device location is not saved.</p></details>'+((query&&!searchResults().length)||!rows.length?'<p class="plan-notice">No mapped rows match this search. Clear the filters to find a row.</p>':'')+'</section>';
   }
   function fit(rows=filtered()){
     const bounds=mapBounds(rows);if(!bounds)return;
     const all=mapBounds(geometry(),0);origin={e:all.minE,n:all.maxN};
-    const ratio=Math.max(1,svg?.clientWidth||350)/Math.max(1,svg?.clientHeight||420),w=bounds.maxE-bounds.minE,h=bounds.maxN-bounds.minN,width=Math.max(w,h*ratio),height=width/ratio;
-    view={x:(bounds.minE+bounds.maxE)/2-origin.e-width/2,y:origin.n-(bounds.minN+bounds.maxN)/2-height/2,width,height};
+    const surfaceHeight=svg?.clientHeight||420,availableHeight=Math.max(140,surfaceHeight-(selected!==null?300:0)),ratio=Math.max(1,svg?.clientWidth||350)/availableHeight,w=bounds.maxE-bounds.minE,h=bounds.maxN-bounds.minN,width=Math.max(w,h*ratio),height=width/Math.max(1,svg?.clientWidth||350)*surfaceHeight;
+    view={x:(bounds.minE+bounds.maxE)/2-origin.e-width/2,y:origin.n-(bounds.minN+bounds.maxN)/2-width/ratio/2,width,height};
   }
   const xy=p=>[p[0]-origin.e,origin.n-p[1]];
   function center(p,close=false){if(!view||!origin)return;if(close&&view.width>140){view.height*=140/view.width;view.width=140;}const [x,y]=xy(p);view.x=x-view.width/2;view.y=y-view.height/2;}
@@ -102,7 +103,7 @@ export function createSiteMap(api) {
       if(view.width<300||chosen){labels.push({rowNumber:row.rowNumber,n,chosen});if(row.drive&&point(row.drive.point)){const d=xy(row.drive.point);drawing+='<circle class="site-map-drive" cx="'+d[0]+'" cy="'+d[1]+'" r="'+units*4.2+'" fill="#ae3042"><title>Drive gap after panel '+row.drive.after+'</title></circle>'}}
       drawing+='</g>';
     }
-    const surface=svg.getBoundingClientRect(),overlaps=(a,b)=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top,occupied=[...root.querySelectorAll('.site-map-north,.site-map-zoom,.site-map-scale')].map(node=>{const r=node.getBoundingClientRect();return {left:r.left-surface.left-4,right:r.right-surface.left+4,top:r.top-surface.top-4,bottom:r.bottom-surface.top+4};});
+    const surface=svg.getBoundingClientRect(),overlaps=(a,b)=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top,occupied=[...root.querySelectorAll('.site-map-north,.site-map-zoom,.site-map-scale,.site-map-row-card')].map(node=>{const r=node.getBoundingClientRect();return {left:r.left-surface.left-4,right:r.right-surface.left+4,top:r.top-surface.top-4,bottom:r.bottom-surface.top+4};});
     labels.sort((a,b)=>Number(b.chosen)-Number(a.chosen));
     for(const label of labels){const font=label.chosen?13:12,width=font*(String(label.rowNumber).length*.75+.6),half=width/2;let x=(label.n[0]-view.x)/units,y=(label.n[1]-view.y)/units-font;
       if(label.chosen){x=Math.max(half+4,Math.min(surface.width-half-4,x));y=Math.max(font*1.2+4,Math.min(surface.height-font*.3-4,y));}
@@ -115,7 +116,17 @@ export function createSiteMap(api) {
     const scale=root.querySelector('.site-map-scale'),target=view.width/4,power=10**Math.floor(Math.log10(target)),unit=target/power>=5?5:target/power>=2?2:1,metres=unit*power;scale.style.width=Math.max(1,metres/view.width*(svg.clientWidth||350))+'px';scale.textContent=metres>=1000?metres/1000+' km':metres+' m';
     paintSelection(selection);paintLocation();
   }
-  function paintSelection(row){const host=root.querySelector('.site-map-selection');if(!row){host.innerHTML='';return;}const plan=planFor(row),count=plan?.panelCount??row.panelCount,groups=(plan?.panelGroups||[]).map(g=>{const type=(db().panelTypes||[]).find(t=>t.id===g.typeId);return esc(g.quantity)+' × '+esc(g.sourceToken||type?.name||'Unknown type')+' · '+(g.positiveSide==='N'?'↑ +N':g.positiveSide==='S'?'↓ +S':'Direction unconfirmed');});host.innerHTML='<div class="site-map-row-card"><strong>Row '+row.rowNumber+' · '+esc(row.field)+'</strong><small>Pile plan row '+esc(row.pilePlanRow)+' · '+esc(count)+' panels</small>'+groups.map(group=>'<small>'+group+'</small>').join('')+'<small>Motor post '+esc(row.motor?.post)+' · ID '+esc(row.motor?.id)+'</small>'+(plan?.dampersKnown?'<small>Dampers: '+plan.dampers.map(d=>esc(d.post)+' '+esc(d.side==='E'?'East':'West')).join(' · ')+'</small>':'')+(plan&&plan.panelCount!==row.panelCount?'<p class="plan-notice">This plan has changed since the coordinate import. Map geometry still uses the source layout.</p>':'')+'<div class="site-map-row-actions">'+button('Open row','open','class="secondary"')+button('Pallet placement','pallets','class="secondary"')+'</div></div>';}
+  function paintSelection(row){
+    const host=root.querySelector('.site-map-selection');
+    if(!row){host.innerHTML='';selectionKey=null;return;}
+    const plan=planFor(row),type=(db().panelTypes||[]).find(t=>t.id===plan?.panelTypeId),count=plan?.panelCount??row.panelCount;
+    const key=JSON.stringify([row,plan,type]);if(selectionKey===key&&host.firstElementChild)return;selectionKey=key;
+    const groups=(plan?.panelGroups||[]).map(g=>'<span class="site-map-polarity">'+esc(g.quantity)+' '+(g.positiveSide==='N'?'↑ +N':g.positiveSide==='S'?'↓ +S':'? +')+'</span>').join('');
+    const color=/^#[a-f0-9]{6}$/i.test(type?.color||'')?type.color:'#c5ced7',mixed=new Set((plan?.panelGroups||[]).map(g=>g.typeId)).size>1;
+    const motor=plan?.motorAfterPanel==null?'Pending':'After '+esc(plan.motorAfterPanel);
+    const details=(plan?.panelGroups||[]).map((g,i)=>{const t=(db().panelTypes||[]).find(t=>t.id===g.typeId);return '<small>Group '+(i+1)+' · '+esc(t?.description||'Description pending')+' · Current Class '+esc(t?.currentClass||'pending')+' · '+esc(g.sourceToken||'Marking pending')+'</small>';}).join('');
+    host.innerHTML='<section class="site-map-row-card" aria-label="Selected row '+row.rowNumber+'"><div class="site-map-sheet-heading"><div><small>'+esc(row.field)+'</small><h3>Row '+row.rowNumber+'</h3></div>'+button('×','dismiss','class="site-map-sheet-close" aria-label="Close row card"')+'</div><div class="site-map-sheet-type"><span style="background:'+color+'" aria-hidden="true"></span>'+esc(type?.name||'Type pending')+(mixed?' · Mixed types':'')+'</div><div class="site-map-sheet-facts"><div><strong>'+esc(count??'?')+'</strong><small>Panels</small></div><div><strong>'+esc(plan?.damperCount??'?')+'</strong><small>Dampers</small></div><div><strong>'+motor+'</strong><small>Motor · panel</small></div></div>'+(groups?'<div class="site-map-sheet-polarity" aria-label="Panel groups from north to south">'+groups+'</div>':'<small>Panel directions pending</small>')+'<details class="site-map-sheet-details"><summary>IDs & installation details</summary>'+details+'<small>Pile plan row '+esc(row.pilePlanRow??'pending')+' · Motor post '+esc(row.motor?.post??'pending')+' · ID '+esc(row.motor?.id??'pending')+'</small>'+(plan?.dampersKnown?'<small>Dampers: '+plan.dampers.map(d=>esc(d.post)+' '+esc(d.side==='E'?'East':'West')).join(' · ')+'</small>':'')+'</details>'+(plan&&plan.panelCount!==row.panelCount?'<p class="plan-notice">Plan changed since import. Map uses the source layout.</p>':'')+(plan?'<div class="site-map-row-actions">'+button('Open row','open','class="secondary"')+button('Pallets','pallets','class="primary"')+'</div>':'<small>Installation plan is unavailable.</small>')+'</section>';
+  }
   function paintLocation(){
     if(!visible||!root||!svg)return;
     const state=tracker.state(),p=state.fix&&projectLocation(state.fix,source()?.crs,projection()),status=root.querySelector('.site-map-status'),nearest=root.querySelector('.site-map-nearest'),user=svg.querySelector('.site-map-user');
@@ -130,30 +141,33 @@ export function createSiteMap(api) {
     const unavailable=mode==='satellite'&&!['ready','alignment'].includes(satelliteState);for(const action of ['locate','follow'])root.querySelector('[data-map-action="'+action+'"]').disabled=unavailable;
     if(svg&&view)svg.setAttribute('viewBox',[view.x,view.y,view.width,view.height].join(' '));
   }
-  function select(row,focus=true){if(!row)return;selected=row.rowNumber;follow=false;if(mode==='satellite'){satellite.update(filtered(),selected,{focus});paintSelection(row);paintLocation();return;}if(focus)fit([row]);paint();}
+  function revealSelection(){const host=root;if(typeof requestAnimationFrame==='function')requestAnimationFrame(()=>{if(visible&&root===host&&selected!==null)host.querySelector('.site-map-stage')?.scrollIntoView({block:'center'});});}
+  function select(row,focus=true){if(!row)return;selected=row.rowNumber;follow=false;if(mode==='satellite'){satellite.update(filtered(),selected,{focus});paintSelection(row);paintLocation();}else{if(focus)fit([row]);paint();}if(focus)revealSelection();}
   function updateModeCopy(){
     const notice=root.querySelector('.site-map-alignment');if(notice)notice.textContent=mode==='satellite'?'Row outlines await the project coordinate system. Phone GPS is available.':'GPS for rows awaits the project coordinate system.';
     root.querySelector('.site-map-help').textContent=mode==='satellite'?'Use two fingers to move the map · My position requests phone location. Row details and pallet placement remain available through search.':'Drag to move · Pinch to zoom · Tap a row to open its details. Distances use the source coordinates. Device location is not saved.';
   }
   function setMode(next){
     if(!root||next===mode||next==='satellite'&&!satellite)return;
-    tracker.stop();follow=false;mode=next;
+    tracker.stop();follow=false;mode=next;root.querySelector('.site-map-stage').dataset.view=mode;
     root.querySelector('.site-map-plan').hidden=mode!=='plan';root.querySelector('.site-map-google-surface').hidden=mode!=='satellite';
     for(const item of root.querySelectorAll('.site-map-view-switch button'))item.setAttribute('aria-pressed',String(item.dataset.mapAction==='view-'+mode));
     updateModeCopy();
     if(mode==='satellite'){satelliteState='loading';satellite.update(filtered(),selected,{focus:selected!==null});satellite.mount(root.querySelector('.site-map-google-canvas'));paintSelection(geometry().find(r=>r.rowNumber===selected));paintLocation();}
     else{satellite.destroy();paint();}
+    if(selected!==null)revealSelection();
   }
   function mount(host){
     abort?.abort();resize?.disconnect();if(timer)clearInterval(timer);root=host;svg=root?.querySelector('svg.site-map-svg');if(!root||!svg)return;
-    visible=true;abort=new AbortController();const signal=abort.signal;
+    visible=true;selectionKey=null;abort=new AbortController();const signal=abort.signal;
     updateModeCopy();
     if(mode==='satellite'){satelliteState='loading';satellite.update(filtered(),selected,{focus:selected!==null});satellite.mount(root.querySelector('.site-map-google-canvas'));}
     if(!view)fit();if(pendingRow){select(pendingRow);pendingRow=null;}else if(pendingSearch&&query&&searchResults().length===1)select(searchResults()[0]);else paint();pendingSearch=false;
-    if(typeof ResizeObserver==='function'){resize=new ResizeObserver(()=>{if(!visible||!view||!svg.clientWidth||!svg.clientHeight)return;const height=view.width*svg.clientHeight/svg.clientWidth;view.y+=(view.height-height)/2;view.height=height;paint();});resize.observe(svg);}
+    if(typeof ResizeObserver==='function'){resize=new ResizeObserver(()=>{if(!visible||!view||!svg.clientWidth||!svg.clientHeight)return;const height=view.width*svg.clientHeight/svg.clientWidth;if(selected===null)view.y+=(view.height-height)/2;view.height=height;paint();});resize.observe(svg);}
     root.addEventListener('click',event=>{const action=event.target.closest('[data-map-action]')?.dataset.mapAction;if(!action)return;
       if(action==='view-plan'||action==='view-satellite'){setMode(action==='view-plan'?'plan':'satellite');}
       else if(action==='fit'){follow=false;selected=null;if(mode==='satellite'){satellite.update(filtered(),selected);satellite.fit();paintSelection(null);paintLocation();}else{fit();paint();}}
+      else if(action==='dismiss'){selected=null;paintSelection(null);paint();root.querySelector('[data-map-action="'+(mode==='satellite'?'view-satellite':'view-plan')+'"]')?.focus({preventScroll:true});}
       else if(action==='zoom-in'||action==='zoom-out')zoom(action==='zoom-in'?.6:1/.6);
       else if(action==='locate'){follow=true;const state=tracker.state();if(state.fix){const p=projectLocation(state.fix,source()?.crs,projection());if(p){center(p,true);paint();}}else tracker.start();}
       else if(action==='follow'){follow=!(follow&&tracker.state().enabled);if(follow){tracker.start();const fix=tracker.state().fix,p=fix&&projectLocation(fix,source()?.crs,projection());if(p)center(p,true);}paint();}

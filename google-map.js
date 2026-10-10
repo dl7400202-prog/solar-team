@@ -78,7 +78,7 @@ export function createGoogleSatelliteMap({loader,toLocation,colourFor=()=>null,o
     loader.load().then(result=>{
       if(token!==epoch||!host?.isConnected)return;
       maps=result;
-      try{const instance=new maps.Map(host,{center:{lat:56,lng:10},zoom:6,mapTypeId:'satellite',mapTypeControl:true,mapTypeControlOptions:{mapTypeIds:['satellite','hybrid']},zoomControl:true,fullscreenControl:false,streetViewControl:false,rotateControl:false,tilt:0,heading:0,gestureHandling:'cooperative',scaleControl:true,keyboardShortcuts:true});
+      try{const instance=new maps.Map(host,{center:{lat:56,lng:10},zoom:6,mapTypeId:'satellite',mapTypeControl:true,mapTypeControlOptions:{mapTypeIds:['satellite','hybrid']},zoomControl:true,zoomControlOptions:{position:maps.ControlPosition?.TOP_RIGHT},fullscreenControl:false,streetViewControl:false,rotateControl:false,tilt:0,heading:0,gestureHandling:'cooperative',scaleControl:true,keyboardShortcuts:true});
         if(token!==epoch){result.event?.clearInstanceListeners(instance);instance.unbindAll?.();return;}map=instance;
         map.addListener('dragstart',onGesture);map.addListener('zoom_changed',sizePosition);
         host.addEventListener('pointerdown',onGesture,{signal});host.addEventListener('wheel',onGesture,{signal,passive:true});host.addEventListener('keydown',event=>{if(['+','-','=','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))onGesture();},{signal});
