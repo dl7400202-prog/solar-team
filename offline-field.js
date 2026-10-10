@@ -1,5 +1,5 @@
 /* Only explicitly downloaded field instructions are persisted. Never auth, HR or GPS. */
-export const FIELD_BUILD='simple-field-20261010-2';
+export const FIELD_BUILD='panel-only-20261010';
 const DB_NAME='solar-team-field',STORE='packages',KEY='park';
 const pick=(value,keys)=>Object.fromEntries(keys.filter(k=>value?.[k]!==undefined).map(k=>[k,structuredClone(value[k])]));
 const plansKeys=['id','field','notes','slope','source','status','dampers','pallets','rowType','revision','rowNumber','panelCount','damperCount','panelGroups','panelTypeId','panelsKnown','dampersKnown','motorAfterPanel','lowerBearingSide'];

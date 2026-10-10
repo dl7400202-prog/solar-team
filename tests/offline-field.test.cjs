@@ -17,8 +17,8 @@ test('service worker bypasses stale HTTP assets and rejects an index from a diff
   vm.runInNewContext(source,{URL,Request,self:{location:{origin:'https://example.test',href:scope},addEventListener:(n,fn)=>listeners[n]=fn,skipWaiting:async()=>activations++},caches:{open:async()=>cache},fetch:()=>{throw Error('Network should not be used')}});
   listeners.install({waitUntil:p=>task=p});await task;assert.equal(activations,1);
   const readiness=async()=>{listeners.message({data:{type:'FIELD_SHELL_STATUS'},ports:[{postMessage:x=>reply=x}],waitUntil:p=>task=p});await task;return reply;};
-  assert.equal((await readiness()).ready,true);assert.equal(reply.build,'simple-field-20261010-2');
-  assert.ok(assets.includes('./vendor/supabase-2.105.0.js'));assert.ok(assets.includes('./offline-field.js?v=simple-field-20261010-2'));assert.ok(!assets.some(x=>/^https?:/.test(x)));
+  assert.equal((await readiness()).ready,true);assert.equal(reply.build,'panel-only-20261010');
+  assert.ok(assets.includes('./vendor/supabase-2.105.0.js'));assert.ok(assets.includes('./offline-field.js?v=panel-only-20261010'));assert.ok(!assets.some(x=>/^https?:/.test(x)));
   currentIndex='<script src="app.js?v=older-build"></script>';
   assert.equal((await readiness()).ready,false,'HTTP 200 is insufficient when the cached HTML uses an older build');
   listeners.install({waitUntil:p=>task=p});await assert.rejects(task,/different build/);assert.equal(activations,1,'An inconsistent shell must not activate');

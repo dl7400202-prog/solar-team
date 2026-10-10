@@ -76,13 +76,15 @@ test('driver handles unknown panel counts while retaining consecutive pairs and 
   await h.feature.handleAction('plan-driver-close');assert.equal(h.state.screen,'rowPlans');await h.feature.handleAction('plan-row','South-903');assert.match(h.state.html,/rows 903 and 904/);assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 
-test('combined scheme uses source post positions only for a matching layout and element details expose original IDs',async()=>{
+test('panel scheme omits post markers and buttons while retaining panel groups, motor and damper data',async()=>{
   const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature,[plan({motorAfterPanel:46})]);
   h.db.siteMap={rows:[{rowNumber:901,field:'South',panelCount:100,north:[0,100],south:[0,0],drive:{after:46,point:[0,54]},motor:{post:8,id:8008},posts:[{post:2,side:'E',id:8002,point:[0,95]}],groups:plan().panelGroups.map((g,i)=>({first:i*25+1,last:(i+1)*25,id:'STRING-'+i,north:[0,100-i*25],south:[0,75-i*25],crossesDrive:i===1}))}]};
-  await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','panels');assert.match(h.state.html,/class="svg-damper"/);assert.doesNotMatch(h.state.html,/Post placement on this scheme is unavailable/);
+  const before=structuredClone(h.db);
+  await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','panels');assert.doesNotMatch(h.state.html,/class="svg-damper"|data-id="damper-\d+"|Post placement on this scheme is unavailable/);assert.equal((h.state.html.match(/class="svg-panel-cell"/g)||[]).length,100);
   await h.feature.handleAction('plan-diagram-item','group-1');assert.match(h.state.html,/String ID STRING-1/);assert.match(h.state.html,/21 north \+ 4 south/);await h.feature.handleAction('plan-diagram-close');assert.doesNotMatch(h.state.html,/id="plan-element-details"/);
-  await h.feature.handleAction('plan-diagram-item','damper-0');assert.match(h.state.html,/Pile ID 8002/);await h.feature.handleAction('plan-diagram-item','motor');assert.match(h.state.html,/Pile ID 8008/);
-  h.db.siteMap.rows[0].panelCount=75;await h.feature.handleAction('plan-section','panels');assert.doesNotMatch(h.state.html,/class="svg-damper"/);assert.match(h.state.html,/Post placement on this scheme is unavailable/);assert.equal(h.events.filter(e=>e.kind).length,0);
+  await h.feature.handleAction('plan-diagram-item','motor');assert.match(h.state.html,/Pile ID 8008/);
+  await h.feature.handleAction('plan-section','dampers');assert.match(h.state.html,/Damper positions for row 901/);assert.match(h.state.html,/Post numbers from north · 4 dampers/);assert.deepEqual(h.db,before);
+  h.db.siteMap.rows[0].panelCount=75;await h.feature.handleAction('plan-section','panels');assert.doesNotMatch(h.state.html,/class="svg-damper"|data-id="damper-\d+"|Post placement on this scheme is unavailable/);assert.equal((h.state.html.match(/class="svg-panel-cell"/g)||[]).length,100);assert.equal(h.events.filter(e=>e.kind).length,0);
 });
 
 test('Rows hub limits the initial list, expands it and prioritizes an exact row number',async()=>{
