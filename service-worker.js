@@ -1,5 +1,5 @@
-const CACHE = 'solar-team-v36', BUILD='panel-only-20261010';
-const ASSETS = ['./', './index.html', './styles.css?v=panel-only-20261010', './app.js?v=panel-only-20261010', './row-plans.js?v=panel-only-20261010', './row-plans.css?v=panel-only-20261010', './site-map.js?v=panel-only-20261010', './site-map.css?v=panel-only-20261010', './offline-field.js?v=panel-only-20261010', './vendor/proj4-2.22.0.js', './vendor/supabase-client.js', './vendor/supabase-2.105.0.js', './google-map.js?v=panel-only-20261010', './google-maps-config.js?v=panel-only-20261010', './manifest.webmanifest', './icon.svg'];
+const CACHE = 'solar-team-v37', BUILD='fullscreen-map-20261011';
+const ASSETS = ['./', './index.html', './styles.css?v=fullscreen-map-20261011', './app.js?v=fullscreen-map-20261011', './row-plans.js?v=fullscreen-map-20261011', './row-plans.css?v=fullscreen-map-20261011', './site-map.js?v=fullscreen-map-20261011', './site-map.css?v=fullscreen-map-20261011', './offline-field.js?v=fullscreen-map-20261011', './vendor/proj4-2.22.0.js', './vendor/supabase-client.js', './vendor/supabase-2.105.0.js', './google-map.js?v=fullscreen-map-20261011', './google-maps-config.js?v=fullscreen-map-20261011', './manifest.webmanifest', './icon.svg'];
 async function shellReady(cache) {
   const responses=await Promise.all(ASSETS.map(url=>cache.match(url)));
   return responses.every(response=>response?.ok)&&(await responses[1].text()).includes('src="app.js?v='+BUILD+'"');

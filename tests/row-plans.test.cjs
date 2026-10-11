@@ -344,11 +344,12 @@ test('work mode survives restart, invalid or blocked storage does not block fiel
  const blocked=harness(createRowPlansFeature,[plan()],{storage:{getItem(){throw Error('blocked')},setItem(){throw Error('blocked')}}});await blocked.feature.handleAction('plan-row','South-901');await blocked.feature.handleAction('plan-section','dampers');assert.match(blocked.state.html,/Post numbers from north/);assert.equal(restarted.events.filter(e=>e.kind).length,0);
 });
 
-test('fullscreen schemes and map preserve row and task on exit without data writes',async()=>{
+test('map opens fullscreen with collapsed search and a return action; row and task survive without writes',async()=>{
  const {createRowPlansFeature}=await load(),h=harness(createRowPlansFeature);const before=structuredClone(h.db);
  await h.feature.handleAction('plan-row','South-901');await h.feature.handleAction('plan-section','dampers');await h.feature.handleAction('plan-fullscreen');assert.match(h.state.html,/plan-work-fullscreen/);
  await h.feature.handleAction('plan-work-back');assert.doesNotMatch(h.state.html,/plan-work-fullscreen/);assert.match(h.state.html,/Row 901/);assert.match(h.state.html,/data-id="dampers" aria-pressed="true"/);
- await h.feature.handleAction('plan-field-open');await h.feature.handleAction('plan-map-fullscreen');assert.equal(h.feature.isMapFullscreen(),true);await h.feature.handleAction('plan-map-fullscreen');assert.equal(h.feature.isMapFullscreen(),false);assert.equal(h.state.screen,'rowFieldMap');assert.deepEqual(h.db,before);
+ await h.feature.handleAction('plan-field-open');assert.equal(h.feature.isMapFullscreen(),true);assert.match(h.state.html,/field-map-fullscreen/);assert.match(h.state.html,/<details class="field-map-search-panel">/);assert.doesNotMatch(h.state.html,/data-action="plan-map-fullscreen"/);assert.match(h.state.html,/data-action="plan-field-close"/);
+ await h.feature.handleAction('plan-field-close');assert.equal(h.state.screen,'rowPlans');assert.match(h.state.html,/data-id="dampers" aria-pressed="true"/);h.feature.render('rowFieldMap');assert.equal(h.feature.isMapFullscreen(),true);assert.deepEqual(h.db,before);
 });
 
 

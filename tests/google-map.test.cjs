@@ -9,10 +9,11 @@ test('missing configuration does not send an API request',async()=>{const m=awai
 
 test('Google remount restores the previous camera, while explicit row focus still fits the row',async()=>{
  const {createGoogleSatelliteMap}=await load('google-map.js'),instances=[],options=[],fits=[];
- class FakeMap{constructor(host,opts){options.push(opts);instances.push(this);this.centre=opts.center;this.zoom=opts.zoom;}addListener(){}fitBounds(bounds){fits.push(bounds);}getCenter(){return {lat:()=>this.centre.lat,lng:()=>this.centre.lng};}getZoom(){return this.zoom;}unbindAll(){}}
+ class FakeMap{constructor(host,opts){options.push(opts);instances.push(this);this.centre=opts.center;this.zoom=opts.zoom;}addListener(){}fitBounds(bounds){fits.push(bounds);}getCenter(){return {lat:()=>this.centre.lat,lng:()=>this.centre.lng};}getZoom(){return this.zoom;}setZoom(value){this.zoom=value;}unbindAll(){}}
  class Layer{setMap(){}setOptions(){}addListener(){}}
  const maps={Map:FakeMap,Polyline:Layer,LatLngBounds:class{extend(){}},event:{clearInstanceListeners(){}}},host=()=>({isConnected:true,addEventListener(){}}),row={rowNumber:10,north:[1,2],south:[3,4]},adapter=createGoogleSatelliteMap({loader:{load:async()=>maps,onFailure:()=>()=>{}},toLocation:([lat,lng])=>({lat,lng})});
  adapter.update([row],10,{focus:true});adapter.mount(host());await Promise.resolve();assert.equal(fits.length,1);instances[0].centre={lat:55.46,lng:9.27};instances[0].zoom=19;
  adapter.destroy();adapter.update([row],10);adapter.mount(host());await Promise.resolve();assert.deepEqual(options[1].center,{lat:55.46,lng:9.27});assert.equal(options[1].zoom,19);assert.equal(fits.length,1);
+ assert.equal(options[1].mapTypeControl,false);assert.equal(options[1].zoomControl,false);assert.equal(options[1].gestureHandling,'greedy');adapter.zoom(1);assert.equal(instances[1].zoom,20);adapter.zoom(99);assert.equal(instances[1].zoom,22);adapter.zoom(-99);assert.equal(instances[1].zoom,1);
  adapter.update([row],10,{focus:true});assert.equal(fits.length,2);adapter.update([row],null,{resetView:true});adapter.mount(host());await Promise.resolve();assert.equal(options[2].zoom,6);assert.equal(fits.length,3);adapter.destroy();
 });

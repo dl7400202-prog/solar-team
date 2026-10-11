@@ -137,7 +137,7 @@ export function createRowPlansFeature(api) {
   const writable=()=>api.canEdit?api.canEdit():true;
   const editorActions=new Set(['plan-new','plan-edit','plan-type-edit','plan-import','plan-import-apply']);
   let field = '', query = '', teamContext = null, parent = {screen:'settings', id:null};
-  let selectedRow = null, selectedType = null, currentScreen = 'rowPlans', tab = 'diagram', mode = 'panels', schemeFullscreen=false, mapFullscreen=false;
+  let selectedRow = null, selectedType = null, currentScreen = 'rowPlans', tab = 'diagram', mode = 'panels', schemeFullscreen=false;
   let draft = null, editBase = null, typeBase = null, editDirty = false, importText = '', importPreview = null, typeParent='settings';
   let palletNeighborId = null;
   let diagramItem = null;
@@ -193,8 +193,9 @@ export function createRowPlansFeature(api) {
     renderPage('Work','<div class="rows-hub">'+context+workTabs('plan-work-mode')+resume+'<form data-form="plan-filter" class="plan-filters"><div class="plan-search-line"><label><span class="sr-only">Field</span><select name="field">'+option('','All fields',field)+selectOptions(fields(),field)+'</select></label><label><span class="sr-only">Find row, type or post ID</span><input name="query" type="search" value="'+esc(query)+'" maxlength="60" placeholder="Row / ID" inputmode="search" enterkeyhint="search"></label><button type="submit" class="compact" aria-label="Find rows">Find</button></div>'+(field||query?'<div class="plan-filter-summary"><small>'+esc(field||'All fields')+(query?' · '+esc(query):'')+'</small>'+btn('Clear','plan-reset','text-button')+'</div>':'')+'</form><div id="plan-results">'+listRows()+'</div></div>');
   }
   function drawField(){
-    const filterForm='<form data-form="plan-filter" class="field-map-search"><label><span class="sr-only">Field</span><select name="field">'+option('','All fields',field)+selectOptions(fields(),field)+'</select></label><label><span class="sr-only">Find row, type or post ID</span><input name="query" type="search" value="'+esc(query)+'" maxlength="60" placeholder="Row / ID" inputmode="search" enterkeyhint="search"></label><button type="submit" aria-label="Find rows">Find</button>'+(query?'<button type="button" class="text-button" data-action="plan-reset" aria-label="Clear row search">×</button>':'')+'</form>';
-    api.draw('<section class="field-map-page'+(mapFullscreen?' field-map-fullscreen':' field-map-main')+'" aria-label="Park map"><header class="field-map-heading"><div><h1 tabindex="-1">Map</h1><small>'+esc(api.offlineIndicator?.()||'Solar Park Nagbøl')+'</small></div><button type="button" class="secondary" data-action="plan-map-fullscreen" aria-label="'+(mapFullscreen?'Exit full screen':'Full screen')+'">'+(mapFullscreen?'×':'⛶')+'</button></header>'+filterForm+(mapFeature()?.html(field,query,{fullscreen:true})||'<p>Map unavailable.</p>')+'</section>');
+    const filterForm='<form data-form="plan-filter" class="field-map-search"><label><span class="sr-only">Field</span><select name="field">'+option('','All fields',field)+selectOptions(fields(),field)+'</select></label><label><span class="sr-only">Find row, type or post ID</span><input name="query" type="search" value="'+esc(query)+'" maxlength="60" placeholder="Row / ID" inputmode="search" enterkeyhint="search"></label><button type="submit" aria-label="Find rows">Find</button>'+(field||query?'<button type="button" class="text-button" data-action="plan-reset">Clear filters</button>':'')+'</form>';
+    const mapIcon=path=>'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+path+'</svg>';
+    api.draw('<section class="field-map-page field-map-fullscreen" aria-label="Park map"><header class="field-map-heading"><button type="button" class="map-glass map-icon-button" data-action="plan-field-close" aria-label="Back to work" title="Back to work">'+mapIcon('<path d="m15 5-7 7 7 7"/>')+'</button><div class="field-map-title map-glass"><h1 tabindex="-1">Nagbøl</h1><small>'+esc(api.offlineIndicator?.()||'Solar Park Nagbøl')+'</small></div><details class="field-map-search-panel"><summary class="map-glass map-icon-button'+(field||query?' has-filter':'')+'" aria-label="Find rows" title="Find rows">'+mapIcon('<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>')+'</summary><div class="field-map-search-content map-glass"><strong>Find row</strong>'+filterForm+'</div></details></header>'+(mapFeature()?.html(field,query,{fullscreen:true})||'<p>Map unavailable.</p>')+'</section>');
     if(typeof document!=='undefined')mapFeature()?.mount(document.querySelector('.site-map'));
   }
   function drawPlan() {
@@ -518,7 +519,6 @@ export function createRowPlansFeature(api) {
     if (action==='plan-open') {teamContext=null;parent={screen:'settings',id:null};field='';query='';api.navigate('rowPlans');}
     else if(action==='plan-field-open'){teamContext=null;listMode='map';api.navigate('rowFieldMap');}
     else if(action==='plan-field-close'){api.navigate('rowPlans');}
-    else if(action==='plan-map-fullscreen'){mapFullscreen=!mapFullscreen;render('rowFieldMap');}
     else if(action==='plan-fullscreen'){schemeFullscreen=!schemeFullscreen;render('rowPlan');}
     else if(action==='plan-work-back'){if(schemeFullscreen){schemeFullscreen=false;render('rowPlan');}else api.navigate(rowParent);}
     else if(action==='plan-work-mode'){chooseMode(id);render(currentScreen==='rowFieldMap'?'rowFieldMap':'rowPlans');}
@@ -598,7 +598,7 @@ export function createRowPlansFeature(api) {
     },
     back(screen) {if(screen==='rowFieldMap')return {screen:'rowPlans',id:null};if(screen==='rowPlans')return parent;if(screen==='rowPlan')return {screen:rowParent,id:null};if(screen==='rowPalletDriver')return {screen:rowParent,id:null};if(screen==='rowPlanEdit')return {screen:editBase?'rowPlan':'rowPlans',id:null};if(screen==='panelTypeEdit')return {screen:'panelTypes',id:null};if(screen==='panelTypes')return {screen:typeParent,id:null};if(screen==='rowPlanImport')return {screen:'rowPlans',id:null};return null;},
     navDestination:screen=>screen==='rowFieldMap'?'map':['panelTypes','panelTypeEdit'].includes(screen)?'more':'rows',
-    isMapFullscreen:()=>mapFullscreen,
+    isMapFullscreen:()=>currentScreen==='rowFieldMap',
     openTeam(team) {teamContext=copy(team);parent={screen:'team',id:team.id};field=team.field;query='';api.navigate('rowPlans');}
   };
 }
