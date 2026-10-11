@@ -1,6 +1,14 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const load=()=>import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(path.join(__dirname,'../site-map.js'),'utf8')).toString('base64'));
 const rows=[{rowNumber:10,field:'South',north:[500000,6100100],south:[500000,6100000]},{rowNumber:11,field:'South',north:[500010,6100075],south:[500010,6100000]}];
+test('aerial camera stays inside downloaded bounds without distorting geography on either orientation',async()=>{
+ const {constrainAerialView}=await load(),bounds={minE:100,maxE:4900,minN:100,maxN:4900},origin={e:100,n:4900};
+ for(const camera of [{x:-200,y:-500,width:1704,height:3688},{x:4200,y:4400,width:600,height:1000},{x:-4000,y:-2000,width:9000,height:4000},{x:-4000,y:-2000,width:4000,height:9000}]){
+  const before=structuredClone(camera),v=constrainAerialView(camera,bounds,origin);
+  assert.ok(v.x>=0&&v.y>=0);assert.ok(v.x+v.width<=4800+1e-9&&v.y+v.height<=4800+1e-9);assert.ok(Math.abs(v.width/v.height-camera.width/camera.height)<1e-12);assert.deepEqual(camera,before);
+ }
+ const inside={x:800,y:600,width:1704,height:3688};assert.deepEqual(constrainAerialView(inside,bounds,origin),inside);assert.equal(constrainAerialView(inside,null,origin),inside);
+});
 function gps(){let success,error,next=0;const started=[],cleared=[];return {started,cleared,emit:p=>success(p),fail:e=>error(e),api:{watchPosition:(ok,bad,options)=>{success=ok;error=bad;started.push(options);return ++next},clearWatch:id=>cleared.push(id)}}}
 
 test('one map defaults to available aerial, defers Google creation and retains its layer when hidden',async()=>{

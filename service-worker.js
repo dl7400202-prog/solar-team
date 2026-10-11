@@ -1,5 +1,5 @@
-const CACHE = 'solar-team-v38', BUILD='fullscreen-map-20261011-2';
-const ASSETS = ['./', './index.html', './styles.css?v=fullscreen-map-20261011-2', './app.js?v=fullscreen-map-20261011-2', './row-plans.js?v=fullscreen-map-20261011-2', './row-plans.css?v=fullscreen-map-20261011-2', './site-map.js?v=fullscreen-map-20261011-2', './site-map.css?v=fullscreen-map-20261011-2', './offline-field.js?v=fullscreen-map-20261011-2', './vendor/proj4-2.22.0.js', './vendor/supabase-client.js', './vendor/supabase-2.105.0.js', './google-map.js?v=fullscreen-map-20261011-2', './google-maps-config.js?v=fullscreen-map-20261011-2', './manifest.webmanifest', './icon.svg'];
+const CACHE = 'solar-team-v39', BUILD='aerial-coverage-20261011';
+const ASSETS = ['./', './index.html', './styles.css?v=aerial-coverage-20261011', './app.js?v=aerial-coverage-20261011', './row-plans.js?v=aerial-coverage-20261011', './row-plans.css?v=aerial-coverage-20261011', './site-map.js?v=aerial-coverage-20261011', './site-map.css?v=aerial-coverage-20261011', './offline-field.js?v=aerial-coverage-20261011', './vendor/proj4-2.22.0.js', './vendor/supabase-client.js', './vendor/supabase-2.105.0.js', './google-map.js?v=aerial-coverage-20261011', './google-maps-config.js?v=aerial-coverage-20261011', './manifest.webmanifest', './icon.svg'];
 async function shellReady(cache) {
   const responses=await Promise.all(ASSETS.map(url=>cache.match(url)));
   return responses.every(response=>response?.ok)&&(await responses[1].text()).includes('src="app.js?v='+BUILD+'"');

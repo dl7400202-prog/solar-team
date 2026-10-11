@@ -3,6 +3,14 @@ const point = p => Array.isArray(p) && p.length===2 && p.every(v=>Number.isFinit
 const supported = crs => ['EPSG:25832','EPSG:32632'].includes(crs);
 const definition = crs => crs==='EPSG:25832'?'+proj=utm +zone=32 +ellps=GRS80 +units=m +no_defs':'+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs';
 const FRESH_MS=30000;
+// Keep a georeferenced camera within the downloaded photo without stretching it.
+export function constrainAerialView(view,bounds,origin){
+  if(!view||!bounds||!origin||![view.x,view.y,view.width,view.height,bounds.minE,bounds.maxE,bounds.minN,bounds.maxN,origin.e,origin.n].every(Number.isFinite)||view.width<=0||view.height<=0||bounds.maxE<=bounds.minE||bounds.maxN<=bounds.minN)return view;
+  const left=bounds.minE-origin.e,top=origin.n-bounds.maxN,right=bounds.maxE-origin.e,bottom=origin.n-bounds.minN;
+  const factor=Math.min(1,(right-left)/view.width,(bottom-top)/view.height),width=view.width*factor,height=view.height*factor;
+  const x=view.x+(view.width-width)/2,y=view.y+(view.height-height)/2;
+  return {x:Math.max(left,Math.min(right-width,x)),y:Math.max(top,Math.min(bottom-height,y)),width,height};
+}
 export function mapBounds(rows,padding=20) {
   const points=rows.flatMap(r=>[r.north,r.south]).filter(point);
   if(!points.length)return null;
@@ -101,10 +109,11 @@ export function createSiteMap(api) {
   function paint(){
     if(!root||!svg||!view||!origin)return;
     if(mode==='satellite'){satellite?.update(filtered(),selected);paintSelection(geometry().find(r=>r.rowNumber===selected));paintLocation();return;}
+    if(mode==='aerial'&&imagery)view=constrainAerialView(view,imagery.meta.bounds,origin);
     svg.setAttribute('viewBox',[view.x,view.y,view.width,view.height].join(' '));svg.setAttribute('preserveAspectRatio','none');
     const rows=filtered(),selection=geometry().find(r=>r.rowNumber===selected&&(!filter||r.field===filter));
     const units=view.width/(svg.clientWidth||350),labels=[];
-    let drawing='<defs><pattern id="site-map-grid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="#d3e4d9" stroke-width=".7" vector-effect="non-scaling-stroke"/></pattern></defs><rect x="'+view.x+'" y="'+view.y+'" width="'+view.width+'" height="'+view.height+'" fill="url(#site-map-grid)"/>';
+    let drawing=mode==='aerial'?'':'<defs><pattern id="site-map-grid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="#d3e4d9" stroke-width=".7" vector-effect="non-scaling-stroke"/></pattern></defs><rect x="'+view.x+'" y="'+view.y+'" width="'+view.width+'" height="'+view.height+'" fill="url(#site-map-grid)"/>';
     if(mode==='aerial'&&imagery){const b=imagery.meta.bounds,n=xy([b.minE,b.maxN]);drawing+='<image class="site-map-aerial-image" href="'+esc(imagery.url)+'" x="'+n[0]+'" y="'+n[1]+'" width="'+(b.maxE-b.minE)+'" height="'+(b.maxN-b.minN)+'" preserveAspectRatio="none"/>';}
     for(const row of rows){const n=xy(row.north),s=xy(row.south),chosen=row.rowNumber===selected,p=planFor(row);const inView=n[0]>=view.x-10&&n[0]<=view.x+view.width+10&&s[1]>=view.y-10&&n[1]<=view.y+view.height+10;if(!inView)continue;
       drawing+='<g class="site-map-row" data-row-number="'+row.rowNumber+'"><title>Row '+row.rowNumber+' · '+esc(row.field)+'</title><path d="M'+n.join(' ')+'L'+s.join(' ')+'" stroke="'+(chosen?(mode==='aerial'?'#fff065':'#00875b'):(mode==='aerial'?'#c3e7ff':'#183b5c'))+'" stroke-width="'+(chosen?5:mode==='aerial'&&view.width>=300?.8:2)+'" vector-effect="non-scaling-stroke"/>';
