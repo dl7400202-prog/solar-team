@@ -1,11 +1,11 @@
 import { createClient } from './vendor/supabase-client.js';
-import {createOfflineField,createParkImagery,validParkImagery} from './offline-field.js?v=aerial-coverage-20261011';
+import {createOfflineField,createParkImagery,validParkImagery} from './offline-field.js?v=solar-mark-20261011';
 
 const supabase = createClient('https://oimiygdkrnsjzlivwafs.supabase.co','sb_publishable_WKPV0lAUCl1Lr53UujCR3g_zlQay4DS');
-import {createRowPlansFeature} from './row-plans.js?v=aerial-coverage-20261011';
-import {createSiteMap} from './site-map.js?v=aerial-coverage-20261011';
-import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=aerial-coverage-20261011';
-import {googleMapsConfig} from './google-maps-config.js?v=aerial-coverage-20261011';
+import {createRowPlansFeature} from './row-plans.js?v=solar-mark-20261011';
+import {createSiteMap} from './site-map.js?v=solar-mark-20261011';
+import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=solar-mark-20261011';
+import {googleMapsConfig} from './google-maps-config.js?v=solar-mark-20261011';
 let googleMapsLoader=null;
 let offlineAccess=false,offlineStarting=false;
 const parkImagery=createParkImagery();
@@ -91,7 +91,7 @@ function assignmentConflicts(ids,date=localDay(),exclude=''){return db.teams.fil
 function totals(teams){const grouped=new Map();for(const t of teams){const unit=workUnit(t),amount=unit==='rows'?(isRow(t.to)?actualRows(t):0):(Number.isFinite(Number(t.quantity))?Number(t.quantity):0);if(amount)grouped.set(t.work+'\u0000'+unit,(grouped.get(t.work+'\u0000'+unit)||0)+amount)}return [...grouped].map(([key,value])=>{const [work,unit]=key.split('\u0000');return [work,value,unit]})}
 function staffing(){const today=db.teams.filter(t=>t.date===localDay()),ids=assignedPeopleIds(),active=db.people.filter(p=>p.active);return {teams:today.length,assigned:ids.size,available:active.filter(p=>(p.availability||'ON_SITE')==='ON_SITE'&&!ids.has(p.id)&&p.id!==db.defaultTeamLeaderId).length,off:active.filter(p=>p.availability==='OFF').length,sick:active.filter(p=>p.availability==='SICK').length,active:active.length}}
 function options(values,current='',all=''){const choices=[...new Set(values)];if(current&&!choices.includes(current))choices.unshift(current);return (all?'<option value="">'+esc(all)+'</option>':'')+choices.map(v=>'<option value="'+esc(v)+'" '+(v===current?'selected':'')+'>'+esc(v)+'</option>').join('')}
-function header(title,back=false){return '<header class="top">'+(back?btn('‹ <span>Back</span>','back','back'):'<div class="brand"><svg class="brand-mark" viewBox="0 0 48 36" aria-hidden="true"><g fill="none" stroke="#f0b900" stroke-width="2.8" stroke-linecap="round"><path d="M24 2v4M10 7l3 3M38 7l-3 3M4 18h5M39 18h5"/></g><circle cx="24" cy="19" r="10" fill="#f0b900"/><path d="M5 22h38l-4 11H9z" fill="#152840"/><path d="m17 22-4 11m14-11-2 11M7 27h34" fill="none" stroke="#f4f7fa" stroke-width="1.5"/></svg><span class="brand-name"><span class="brand-solar">SOLAR</span> <span class="brand-team">TEAM</span></span></div>')+'<time datetime="'+localDay()+'">'+dateLabel(localDay())+'</time></header><h1 tabindex="-1">'+esc(title)+'</h1>'}
+function header(title,back=false){return '<header class="top">'+(back?btn('‹ <span>Back</span>','back','back'):'<div class="brand"><img class="brand-mark" src="icon.svg?v=solar-mark-20261011" width="34" height="34" alt="" aria-hidden="true"><span class="brand-name"><span class="brand-solar">SOLAR</span> <span class="brand-team">TEAM</span></span></div>')+'<time datetime="'+localDay()+'">'+dateLabel(localDay())+'</time></header><h1 tabindex="-1">'+esc(title)+'</h1>'}
 const iconShapes={
 work:'<rect x="3" y="3" width="18" height="15" rx="2"/><path d="M9 3v15M15 3v15M3 8h18M3 13h18M8 21h8M12 18v3"/>',
 today:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>',
