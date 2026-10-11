@@ -78,7 +78,7 @@ export function createGoogleSatelliteMap({loader,toLocation,colourFor=()=>null,o
     loader.load().then(result=>{
       if(token!==epoch||!host?.isConnected)return;
       maps=result;
-      try{const instance=new maps.Map(host,{center:camera?.center||{lat:56,lng:10},zoom:camera?.zoom??6,mapTypeId:'satellite',mapTypeControl:true,mapTypeControlOptions:{mapTypeIds:['satellite','hybrid']},zoomControl:true,zoomControlOptions:{position:maps.ControlPosition?.TOP_RIGHT},fullscreenControl:false,streetViewControl:false,rotateControl:false,tilt:0,heading:0,gestureHandling:'cooperative',scaleControl:true,keyboardShortcuts:true});
+      try{const instance=new maps.Map(host,{center:camera?.center||{lat:56,lng:10},zoom:camera?.zoom??6,mapTypeId:'satellite',mapTypeControl:false,zoomControl:false,fullscreenControl:false,streetViewControl:false,rotateControl:false,tilt:0,heading:0,gestureHandling:'greedy',scaleControl:true,keyboardShortcuts:true});
         if(token!==epoch){result.event?.clearInstanceListeners(instance);instance.unbindAll?.();return;}map=instance;
         map.addListener('dragstart',onGesture);map.addListener('zoom_changed',sizePosition);
         host.addEventListener('pointerdown',onGesture,{signal});host.addEventListener('wheel',onGesture,{signal,passive:true});host.addEventListener('keydown',event=>{if(['+','-','=','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))onGesture();},{signal});
@@ -86,5 +86,5 @@ export function createGoogleSatelliteMap({loader,toLocation,colourFor=()=>null,o
       }catch{fail();}
     },fail);
   }
-  return {mount,update,fit,showLocation,destroy,resize:()=>{if(map)maps.event?.trigger(map,'resize')}};
+  return {mount,update,fit,showLocation,destroy,zoom:delta=>{if(map&&Number.isFinite(delta)){onGesture();map.setZoom(Math.max(1,Math.min(22,map.getZoom()+delta)));}},resize:()=>{if(map)maps.event?.trigger(map,'resize')}};
 }
