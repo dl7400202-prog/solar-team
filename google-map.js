@@ -28,14 +28,20 @@ export function createGoogleMapsLoader({key,document=globalThis.document,scope=g
 }
 
 export function createGoogleSatelliteMap({loader,toLocation,colourFor=()=>null,onSelect=()=>{},onGesture=()=>{},onStatus=()=>{}}) {
-  let host=null,map=null,maps=null,epoch=0,offFailure=null,abort=null,rows=[],selected=null,layers=[],rowLines=new Map(),position=null,accuracy=null,label=null,location=null,following=false,focusPending=false,camera=null,resetCamera=false;
-  const clearLayers=()=>{for(const layer of layers){maps?.event?.clearInstanceListeners(layer);layer.setMap(null);}layers=[];rowLines.clear();label?.setMap(null);label=null;};
+  let host=null,map=null,maps=null,epoch=0,offFailure=null,abort=null,rows=[],selected=null,layers=[],rowLines=new Map(),position=null,accuracy=null,label=null,location=null,following=false,focusPending=false,camera=null,resetCamera=false,halo=null;
+  const clearLayers=()=>{for(const layer of layers){maps?.event?.clearInstanceListeners(layer);layer.setMap(null);}layers=[];rowLines.clear();halo?.setMap(null);halo=null;label?.setMap(null);label=null;};
   function report(state){onStatus(state);}
   function boundsFor(items){const bounds=new maps.LatLngBounds();let count=0;for(const row of items)for(const p of [row.north,row.south]){const converted=toLocation(p);if(converted){bounds.extend(converted);count++;}}return count?bounds:null;}
   function fit(items=rows){if(!map)return;const bounds=boundsFor(items);if(bounds)map.fitBounds(bounds,40);else report('alignment');}
+  function rowWidth(){const lat=map?.getCenter?.()?.lat?.()??56,zoom=map?.getZoom?.()??16,units=156543.03392*Math.cos(lat*Math.PI/180)/2**zoom;return Math.max(1.8,Math.min(7,3.2/(Number.isFinite(units)&&units>0?units:2)));}
+  function styleRows(){
+    if(!map)return;const width=rowWidth();
+    for(const [number,entry]of rowLines)for(const band of entry.bands)band.setOptions({strokeWeight:width,strokeOpacity:1,zIndex:number===selected?6:2});
+    halo?.setOptions({strokeWeight:width+3});
+  }
   function highlight(){
     if(!map)return;
-    for(const [number,entry]of rowLines)entry.line.setOptions({strokeColor:number===selected?'#00df98':entry.colour,strokeWeight:number===selected?6:3,zIndex:number===selected?5:1});
+    halo?.setMap(null);halo=null;const chosen=rows.find(r=>r.rowNumber===selected);if(chosen){const n=toLocation(chosen.north),s=toLocation(chosen.south);if(n&&s)halo=new maps.Polyline({map,path:[n,s],strokeColor:'#ffffff',strokeOpacity:1,strokeWeight:rowWidth()+3,clickable:false,zIndex:5});}styleRows();
     label?.setMap(null);label=null;
     const row=rows.find(r=>r.rowNumber===selected),p=row&&toLocation(row.north);
     if(p&&typeof maps.OverlayView==='function'){
@@ -49,10 +55,11 @@ export function createGoogleSatelliteMap({loader,toLocation,colourFor=()=>null,o
     if(!map)return;
     clearLayers();
     for(const row of rows){const n=toLocation(row.north),s=toLocation(row.south);if(!n||!s)continue;
-      const baseColour=colourFor(row,0),colour=/^#[a-f0-9]{6}$/i.test(baseColour||'')?baseColour:'#ffffff';
-      const line=new maps.Polyline({map,path:[n,s],strokeColor:colour,strokeWeight:3,zIndex:1});line.addListener('click',()=>onSelect(row));layers.push(line);rowLines.set(row.rowNumber,{line,colour});
-      if(row.rowNumber===selected)for(let i=0;i<(row.groups||[]).length;i++){const group=row.groups[i],gn=toLocation(group.north),gs=toLocation(group.south),colour=colourFor(row,i);if(gn&&gs&&/^#[a-f0-9]{6}$/i.test(colour||'')){const stripe=new maps.Polyline({map,path:[gn,gs],strokeColor:colour,strokeWeight:2,zIndex:2});stripe.addListener('click',()=>onSelect(row));layers.push(stripe);}}
-      const motor=row.drive?.point&&toLocation(row.drive.point);if(motor){const mark=new maps.Circle({map,center:motor,radius:1.5,fillColor:'#ec6475',fillOpacity:1,strokeColor:'#ffffff',strokeWeight:1,zIndex:3});mark.addListener('click',()=>onSelect(row));layers.push(mark);}
+      const colour=index=>{const value=colourFor(row,index);return /^#[a-f0-9]{6}$/i.test(value||'')?value:'#c5ced7';};
+      let parts=(row.groups||[]).map((group,index)=>({north:group.north&&toLocation(group.north),south:group.south&&toLocation(group.south),colour:colour(index)})).filter(g=>g.north&&g.south);
+      if(!parts.length||parts.every(g=>g.colour===parts[0].colour))parts=[{north:n,south:s,colour:parts[0]?.colour||colour(0)}];
+      const bands=parts.map(part=>{const band=new maps.Polyline({map,path:[part.north,part.south],strokeColor:part.colour,strokeOpacity:1,strokeWeight:rowWidth(),zIndex:2});band.addListener('click',()=>onSelect(row));layers.push(band);return band;});rowLines.set(row.rowNumber,{bands});
+      const motor=row.drive?.point&&toLocation(row.drive.point);if(motor){const mark=new maps.Circle({map,center:motor,radius:1.5,fillColor:'#ec6475',fillOpacity:1,strokeColor:'#ffffff',strokeWeight:1,zIndex:row.rowNumber===selected?7:3});mark.addListener('click',()=>onSelect(row));layers.push(mark);}
     }
     highlight();
     report(rowLines.size?'ready':'alignment');
@@ -80,7 +87,7 @@ export function createGoogleSatelliteMap({loader,toLocation,colourFor=()=>null,o
       maps=result;
       try{const instance=new maps.Map(host,{center:camera?.center||{lat:56,lng:10},zoom:camera?.zoom??6,mapTypeId:'satellite',mapTypeControl:false,zoomControl:false,cameraControl:false,disableDefaultUI:true,fullscreenControl:false,streetViewControl:false,rotateControl:false,tilt:0,heading:0,gestureHandling:'greedy',scaleControl:true,keyboardShortcuts:true});
         if(token!==epoch){result.event?.clearInstanceListeners(instance);instance.unbindAll?.();return;}map=instance;
-        map.addListener('dragstart',onGesture);map.addListener('zoom_changed',sizePosition);
+        map.addListener('dragstart',onGesture);map.addListener('zoom_changed',()=>{sizePosition();styleRows();});
         host.addEventListener('pointerdown',onGesture,{signal});host.addEventListener('wheel',onGesture,{signal,passive:true});host.addEventListener('keydown',event=>{if(['+','-','=','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))onGesture();},{signal});
         drawRows();const row=rows.find(r=>r.rowNumber===selected);if(focusPending||!camera)fit(row&&focusPending?[row]:rows);focusPending=false;showLocation(location,{follow:following});
       }catch{fail();}
