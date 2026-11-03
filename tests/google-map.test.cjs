@@ -17,3 +17,16 @@ test('Google remount restores the previous camera, while explicit row focus stil
  assert.equal(options[1].mapTypeControl,false);assert.equal(options[1].zoomControl,false);assert.equal(options[1].cameraControl,false);assert.equal(options[1].disableDefaultUI,true);assert.equal(options[1].gestureHandling,'greedy');adapter.zoom(1);assert.equal(instances[1].zoom,20);adapter.zoom(99);assert.equal(instances[1].zoom,22);adapter.zoom(-99);assert.equal(instances[1].zoom,1);
  adapter.update([row],10,{focus:true});assert.equal(fits.length,2);adapter.update([row],null,{resetView:true});adapter.mount(host());await Promise.resolve();assert.equal(options[2].zoom,6);assert.equal(fits.length,3);adapter.destroy();
 });
+
+test('Google shows every panel colour before selection and keeps the colours when selected or zoomed',async()=>{
+ const {createGoogleSatelliteMap}=await load('google-map.js'),lines=[],events={};let instance;
+ class FakeMap{constructor(){instance=this;this.zoom=15;this.centre={lat:55.46,lng:9.27};}addListener(name,fn){events[name]=fn;}fitBounds(){}getCenter(){return {lat:()=>this.centre.lat,lng:()=>this.centre.lng};}getZoom(){return this.zoom;}unbindAll(){}}
+ class Polyline{constructor(options){this.options={...options};lines.push(this);}setMap(map){this.options.map=map;}setOptions(options){Object.assign(this.options,options);}addListener(){}}
+ const maps={Map:FakeMap,Polyline,LatLngBounds:class{extend(){}},event:{clearInstanceListeners(){}}},row={rowNumber:20,north:[55.46,9.27],south:[55.45,9.27],groups:[{north:[55.46,9.27],south:[55.455,9.27]},{north:[55.455,9.27],south:[55.45,9.27]}]},adapter=createGoogleSatelliteMap({loader:{load:async()=>maps,onFailure:()=>()=>{}},toLocation:([lat,lng])=>({lat,lng}),colourFor:(row,index)=>index===0?'#0070c0':'#ffff00'});
+ adapter.update([row],null);adapter.mount({isConnected:true,addEventListener(){}});await Promise.resolve();
+ const colours=()=>lines.filter(line=>line.options.map&&['#0070c0','#ffff00'].includes(line.options.strokeColor));
+ assert.deepEqual(colours().map(line=>line.options.strokeColor),['#0070c0','#ffff00']);assert.ok(colours().every(line=>line.options.strokeWeight>=1.8&&line.options.strokeOpacity===1));
+ adapter.update([row],20);assert.deepEqual(colours().map(line=>line.options.strokeColor),['#0070c0','#ffff00']);const small=colours()[0].options.strokeWeight;
+ instance.zoom=19;events.zoom_changed();assert.ok(colours()[0].options.strokeWeight>small);assert.ok(colours().every(line=>line.options.strokeWeight<=7));
+ adapter.update([row],null);assert.deepEqual(colours().map(line=>line.options.strokeColor),['#0070c0','#ffff00']);adapter.destroy();
+});

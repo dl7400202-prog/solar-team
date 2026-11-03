@@ -2,6 +2,16 @@
 const point = p => Array.isArray(p) && p.length===2 && p.every(v=>Number.isFinite(v)&&Math.abs(v)<=2e7);
 const supported = crs => ['EPSG:25832','EPSG:32632'].includes(crs);
 const definition = crs => crs==='EPSG:25832'?'+proj=utm +zone=32 +ellps=GRS80 +units=m +no_defs':'+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs';
+
+export const rowBandWidth = units => Math.max(1.8,Math.min(7,3.2/(Number.isFinite(units)&&units>0?units:2)));
+export function rowColourBands(row,plan,panelTypes=[]){
+  const colour=id=>{const value=panelTypes.find(t=>t.id===id)?.color;return /^#[a-f0-9]{6}$/i.test(value||'')?value:'#c5ced7';};
+  const bands=(row.groups||[]).map((g,i)=>({north:g.north,south:g.south,colour:colour(plan?.panelGroups?.[i]?.typeId)})).filter(g=>point(g.north)&&point(g.south));
+  if(!bands.length)return [{north:row.north,south:row.south,colour:colour(plan?.panelTypeId)}];
+  if(bands.every(g=>g.colour===bands[0].colour))return [{north:row.north,south:row.south,colour:bands[0].colour}];
+  return bands;
+}
+
 const FRESH_MS=30000;
 // Keep a georeferenced camera within the downloaded photo without stretching it.
 export function constrainAerialView(view,bounds,origin){
@@ -115,14 +125,18 @@ export function createSiteMap(api) {
     const units=view.width/(svg.clientWidth||350),labels=[];
     let drawing=mode==='aerial'?'':'<defs><pattern id="site-map-grid" width="50" height="50" patternUnits="userSpaceOnUse"><path d="M50 0H0V50" fill="none" stroke="#d3e4d9" stroke-width=".7" vector-effect="non-scaling-stroke"/></pattern></defs><rect x="'+view.x+'" y="'+view.y+'" width="'+view.width+'" height="'+view.height+'" fill="url(#site-map-grid)"/>';
     if(mode==='aerial'&&imagery){const b=imagery.meta.bounds,n=xy([b.minE,b.maxN]);drawing+='<image class="site-map-aerial-image" href="'+esc(imagery.url)+'" x="'+n[0]+'" y="'+n[1]+'" width="'+(b.maxE-b.minE)+'" height="'+(b.maxN-b.minN)+'" preserveAspectRatio="none"/>';}
+    let selectedRowDrawing='';
     for(const row of rows){const n=xy(row.north),s=xy(row.south),chosen=row.rowNumber===selected,p=planFor(row);const inView=n[0]>=view.x-10&&n[0]<=view.x+view.width+10&&s[1]>=view.y-10&&n[1]<=view.y+view.height+10;if(!inView)continue;
-      drawing+='<g class="site-map-row" data-row-number="'+row.rowNumber+'"><title>Row '+row.rowNumber+' · '+esc(row.field)+'</title><path d="M'+n.join(' ')+'L'+s.join(' ')+'" stroke="'+(chosen?(mode==='aerial'?'#fff065':'#00875b'):(mode==='aerial'?'#c3e7ff':'#183b5c'))+'" stroke-width="'+(chosen?5:mode==='aerial'&&view.width>=300?.8:2)+'" vector-effect="non-scaling-stroke"/>';
-      if(view.width<180)for(let i=0;i<(row.groups||[]).length;i++){const group=row.groups[i],gn=xy(group.north),gs=xy(group.south),type=(db().panelTypes||[]).find(t=>t.id===p?.panelGroups?.[i]?.typeId),colour=/^#[a-f0-9]{6}$/i.test(type?.color||'')?type.color:'#c5ced7';drawing+='<path d="M'+gn.join(' ')+'L'+gs.join(' ')+'" stroke="'+colour+'" stroke-width="2" vector-effect="non-scaling-stroke"/>'}
+      const width=rowBandWidth(units),path='M'+n.join(' ')+'L'+s.join(' ');
+      let rowDrawing='<g class="site-map-row" data-row-number="'+row.rowNumber+'"><title>Row '+row.rowNumber+' · '+esc(row.field)+'</title>';
+      if(chosen)rowDrawing+='<path class="site-map-row-outline" d="'+path+'" fill="none" stroke="#152840" stroke-width="'+(width+5)+'" vector-effect="non-scaling-stroke"/><path class="site-map-row-outline" d="'+path+'" fill="none" stroke="#fff" stroke-width="'+(width+3)+'" vector-effect="non-scaling-stroke"/>';
+      for(const band of rowColourBands(row,p,db().panelTypes||[])){const gn=xy(band.north),gs=xy(band.south);rowDrawing+='<path class="site-map-panel-band" d="M'+gn.join(' ')+'L'+gs.join(' ')+'" fill="none" stroke="'+band.colour+'" stroke-opacity="1" stroke-width="'+width+'" stroke-linecap="round" vector-effect="non-scaling-stroke"/>';}
       if(view.width<300||chosen)labels.push({rowNumber:row.rowNumber,n,chosen});
-      if(chosen&&row.drive&&point(row.drive.point)){const d=xy(row.drive.point);drawing+='<circle class="site-map-drive" cx="'+d[0]+'" cy="'+d[1]+'" r="'+units*4.2+'" fill="#ae3042"><title>Drive gap after panel '+row.drive.after+'</title></circle>';}
-      if(chosen&&p?.dampersKnown)for(const damper of p.dampers||[]){const post=(row.posts||[]).find(post=>post.post===damper.post);if(!point(post?.point))continue;const q=xy(post.point),side=damper.side==='E'?1:-1;drawing+='<path d="M'+q.join(' ')+'h'+side*units*8+'" stroke="#b66300" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="'+(q[0]+side*units*8)+'" cy="'+q[1]+'" r="'+units*3+'" fill="#efae32"><title>Damper · Post '+esc(damper.post)+' · '+esc(damper.side==='E'?'East':'West')+'</title></circle>';}
-      drawing+='</g>';
+      if(chosen&&row.drive&&point(row.drive.point)){const d=xy(row.drive.point);rowDrawing+='<circle class="site-map-drive" cx="'+d[0]+'" cy="'+d[1]+'" r="'+units*4.2+'" fill="#ae3042"><title>Drive gap after panel '+row.drive.after+'</title></circle>';}
+      if(chosen&&p?.dampersKnown)for(const damper of p.dampers||[]){const post=(row.posts||[]).find(post=>post.post===damper.post);if(!point(post?.point))continue;const q=xy(post.point),side=damper.side==='E'?1:-1;rowDrawing+='<path d="M'+q.join(' ')+'h'+side*units*8+'" stroke="#b66300" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="'+(q[0]+side*units*8)+'" cy="'+q[1]+'" r="'+units*3+'" fill="#efae32"><title>Damper · Post '+esc(damper.post)+' · '+esc(damper.side==='E'?'East':'West')+'</title></circle>';}
+      rowDrawing+='</g>';if(chosen)selectedRowDrawing=rowDrawing;else drawing+=rowDrawing;
     }
+    drawing+=selectedRowDrawing;
     const surface=svg.getBoundingClientRect(),overlaps=(a,b)=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top,occupied=[...root.querySelectorAll('.site-map-north,.site-map-zoom,.site-map-scale,.site-map-row-card')].map(node=>{const r=node.getBoundingClientRect();return {left:r.left-surface.left-4,right:r.right-surface.left+4,top:r.top-surface.top-4,bottom:r.bottom-surface.top+4};});
     labels.sort((a,b)=>Number(b.chosen)-Number(a.chosen));
     for(const label of labels){const font=label.chosen?13:12,width=font*(String(label.rowNumber).length*.75+.6),half=width/2;let x=(label.n[0]-view.x)/units,y=(label.n[1]-view.y)/units-font;
