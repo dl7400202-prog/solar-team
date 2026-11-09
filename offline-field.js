@@ -1,13 +1,20 @@
 /* Only explicitly downloaded field instructions are persisted. Never auth, HR or GPS. */
-export const FIELD_BUILD='row-colours-20261103';
+export const FIELD_BUILD='tubes-20261109-v4';
 const DB_NAME='solar-team-field',STORE='packages',KEY='park';
 const pick=(value,keys)=>Object.fromEntries(keys.filter(k=>value?.[k]!==undefined).map(k=>[k,structuredClone(value[k])]));
 const plansKeys=['id','field','notes','slope','source','status','dampers','pallets','rowType','revision','rowNumber','panelCount','damperCount','panelGroups','panelTypeId','panelsKnown','dampersKnown','motorAfterPanel','lowerBearingSide'];
 const rowKeys=['rowNumber','field','pilePlanRow','panelCount','north','south','drive','motor','posts','groups'];
 const imageryKeys=['path','bounds','crs','sha256','bytes','year','attribution','license','sourceUrl'];
-function fieldData(db){return {fields:structuredClone(db.fields||[]),panelTypes:(db.panelTypes||[]).map(t=>pick(t,['id','name','color','configured','description','currentClass'])),rowPlans:(db.rowPlans||[]).map(p=>pick(p,plansKeys)),siteMap:{...pick(db.siteMap,['schemaVersion','crs','source']),...(db.siteMap?.offlineImagery?{offlineImagery:pick(db.siteMap.offlineImagery,imageryKeys)}:{}),rows:(db.siteMap?.rows||[]).map(r=>pick(r,rowKeys))}};}
+function fieldTubeData(value){
+  if(value?.schema!==1||!Array.isArray(value.rows)||!value.templates||Array.isArray(value.templates))return null;
+  try{return {schema:1,source:pick(value.source,['document','revision','date','sha256']),rows:value.rows.map(r=>{
+    if(!Array.isArray(r)||r.length!==4||!Number.isSafeInteger(r[0])||!['North','Mid'].includes(r[1])||typeof r[2]!=='string'||!Number.isSafeInteger(r[3]))throw Error('Invalid tube row');return r.slice();
+  }),templates:Object.fromEntries(Object.entries(value.templates).map(([type,t])=>[type,{page:t.page,tubes:t.tubes.map(tube=>({...pick(tube,['colour','lengthMm','part','driveFromNorthMm']),bearings:tube.bearings.map(b=>pick(b,['kind','fromNorthMm']))}))}]))};}catch{return null;}
+}
+function fieldData(db){return {fields:structuredClone(db.fields||[]),panelTypes:(db.panelTypes||[]).map(t=>pick(t,['id','name','color','configured','description','currentClass'])),rowPlans:(db.rowPlans||[]).map(p=>pick(p,plansKeys)),...(db.tubeInstallation!==undefined?{tubeInstallation:fieldTubeData(db.tubeInstallation)}:{}),siteMap:{...pick(db.siteMap,['schemaVersion','crs','source']),...(db.siteMap?.offlineImagery?{offlineImagery:pick(db.siteMap.offlineImagery,imageryKeys)}:{}),rows:(db.siteMap?.rows||[]).map(r=>pick(r,rowKeys))}};}
 function complete(data){
   if(!data||!Array.isArray(data.fields)||!Array.isArray(data.panelTypes)||!Array.isArray(data.rowPlans)||!data.rowPlans.length||!Array.isArray(data.siteMap?.rows)||!data.siteMap.rows.length||!['EPSG:25832','EPSG:32632'].includes(data.siteMap.crs))return false;
+  if(data.tubeInstallation!==undefined&&!fieldTubeData(data.tubeInstallation))return false;
   const key=r=>r.field+'\0'+r.rowNumber,plans=new Set(data.rowPlans.map(key)),seen=new Set();
   return data.siteMap.rows.every(r=>{const k=key(r),ok=Number.isSafeInteger(r.rowNumber)&&typeof r.field==='string'&&plans.has(k)&&!seen.has(k)&&[r.north,r.south].every(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite));seen.add(k);return ok;});
 }

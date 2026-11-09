@@ -5,6 +5,7 @@ const {test}=require('node:test');
 const source=readFileSync(require('node:path').resolve(process.env.SOLAR_BASELINE_PATH||require('node:path').join(__dirname,'../app.js')),'utf8').replace(/^import .*$/gm,'');
 const featureSource=readFileSync(require('node:path').join(__dirname,'../row-plans.js'),'utf8').replace(/^export /gm,'');
 const offlineSource=readFileSync(require('node:path').join(__dirname,'../offline-field.js'),'utf8').replace(/^export /gm,'');
+const tubeSource=readFileSync(require('node:path').join(__dirname,'../tube-plans.js'),'utf8').replace(/^export /gm,'');
 const weatherFunctionSource=readFileSync(require('node:path').join(__dirname,'./fixtures/index.ts'),'utf8');
 const peopleUpgradeSource=readFileSync(require('node:path').join(__dirname,'./fixtures/people-groups-photos.sql'),'utf8');
 const assignmentUpgradeSource=readFileSync(require('node:path').join(__dirname,'./fixtures/assignment-history-attention.sql'),'utf8');
@@ -29,14 +30,14 @@ test('weather function keeps live conditions on observations and limits forecast
   assert.match(weatherFunctionSource,/precipitationHours: precipitationMm === null \? null : 6/);
 });
 function harness(){
-  const nodes=new Map();const get=k=>{if(!nodes.has(k))nodes.set(k,{innerHTML:'',textContent:'',hidden:true,disabled:false,classList:{add(){},remove(){}},setAttribute(){},focus(){}});return nodes.get(k)};
+  const nodes=new Map();const get=k=>{if(!nodes.has(k))nodes.set(k,{innerHTML:'',textContent:'',hidden:true,disabled:false,classList:{add(){},remove(){}},setAttribute(){},focus(){},scrollIntoView(){},querySelector(){return null;}});return nodes.get(k)};
   let calls=[],failure=null,confirm=true,cloudRow=null,readQueries=[];
   const client={auth:{getSession:()=>new Promise(()=>{})},rpc:async(name,args)=>{calls.push(args);if(failure)return {error:failure};return {data:{data:JSON.parse(vm.runInContext('JSON.stringify(db)',ctx)),version:2,initialized:true}}}};
   client.from=()=>({select(columns){this.columns=columns;readQueries.push(columns);return this},eq(){return this},maybeSingle:async function(){return {data:this.columns==='version'&&cloudRow?{version:cloudRow.version}:cloudRow}}});
   const document={querySelector:get,querySelectorAll:()=>[],addEventListener(){},hidden:false,activeElement:null};
   class Data{constructor(form){this.values=form.values}get(k){return this.values[k]??null}getAll(k){const v=this.values[k];return Array.isArray(v)?v:v?[v]:[]}}
   const ctx=vm.createContext({createClient:()=>client,document,window:{addEventListener(){},scrollTo(){},confirm:()=>confirm},FormData:Data,structuredClone,console,setInterval(){},setTimeout(){return 1},clearTimeout(){},crypto:{randomUUID:()=> 'new-id'},Date,Intl});
-  vm.runInContext(offlineSource,ctx);vm.runInContext(featureSource,ctx);vm.runInContext(source.replace(/^\(async\(\)=>.*$/gm,''),ctx);
+  vm.runInContext(offlineSource,ctx);vm.runInContext(tubeSource,ctx);vm.runInContext(featureSource,ctx);vm.runInContext(source.replace(/^\(async\(\)=>.*$/gm,''),ctx);
   const run=s=>vm.runInContext(s,ctx);
   run(`user={id:'u',email:'demo@example.test'};ready=true;accessRole='editor';db={people:[{id:'a',name:'Mykola Zihura',role:'Technician',availability:'ON_SITE',active:true},{id:'b',name:'Mykola Yakibchuk',role:'Technician',availability:'ON_SITE',active:true},{id:'c',name:'Off Person',role:'Technician',availability:'OFF',active:true},{id:'d',name:'Archived Person',role:'Technician',availability:'ON_SITE',active:false}],fields:['North'],workTypes:['Panels','Bolts'],assignmentHistory:[],teams:[{id:'t',number:1,date:localDay(),members:['a'],field:'North',work:'Panels',from:120,to:null,status:'IN_PROGRESS',note:'',closed:false,issueResolved:false}]};`);
   return {run,nodes,get,calls,readQueries,cloud:row=>cloudRow=row,fail:e=>failure=e,confirm:v=>confirm=v,submit:async(kind,values,intent)=>{ctx.event={preventDefault(){},target:{dataset:{form:kind},values},submitter:{value:intent}};return run('submitForm(event)')}};
@@ -52,6 +53,16 @@ test('Russian field labels preserve escaped source values, attributes and counts
  const h=harness();h.run("uiLanguage='ru'");assert.equal(h.run("localiseText('Dampers')"),'Демперы');assert.equal(h.run("localiseText('21 panels · 4 panels')"),'21 панель · 4 панели');assert.equal(h.run("localiseText('100 panels · Motor: after panel 46')"),'100 панелей · Мотор: после панели 46');
  const html=h.run(`localiseHtml('<button data-id="South:830" aria-label="Next row 831">Panels</button><p>LR8-66HYD-650M &amp; H</p>')`);assert.match(html,/data-id="South:830"/);assert.match(html,/aria-label="Следующий ряд 831"/);assert.match(html,/>Панели</);assert.match(html,/LR8-66HYD-650M &amp; H/);assert.equal(h.calls.length,0);
  h.run("uiLanguage='en'");assert.equal(h.run("localiseText('Dampers')"),'Dampers');
+});
+test('viewer and offline viewer browse Russian tube instructions through the real app without RPC',async()=>{
+ const h=harness();
+ h.run('db.tubeInstallation='+JSON.stringify(require('./fixtures/tube-catalogue.cjs')()));
+ h.run(`accessRole='viewer';uiLanguage='ru';db=normalise(db);db.rowPlans=[10,11].map(n=>({id:'North:'+n,field:'North',rowNumber:n,rowType:'#1',panelCount:100,panelsKnown:true,panelGroups:[],dampers:[],damperCount:0,dampersKnown:true,pallets:[],source:{},status:'needs_review',revision:1}));screen='rowPlans';`);
+ await h.run("act('plan-work-mode','tubes')");await h.run("act('plan-row','North:10')");
+ assert.match(h.get('#app').innerHTML,/Раскладка труб/);assert.match(h.get('#app').innerHTML,/С установочными винтами/);assert.match(h.get('#app').innerHTML,/Труба 3/);
+ await h.run("act('plan-tube-view','ends')");assert.match(h.get('#app').innerHTML,/Крайние подшипники/);assert.match(h.get('#app').innerHTML,/2,23/);assert.match(h.get('#app').innerHTML,/2,16/);
+ h.run('offlineAccess=true');await h.run("act('plan-browse-next')");assert.match(h.get('#app').innerHTML,/Ряд 11/);assert.match(h.get('#app').innerHTML,/2,23/);
+ assert.equal(h.calls.length,0);
 });
 test('inclusive rows and missing endpoint never fabricate output',()=>{const h=harness();assert.equal(h.run('actualRows({from:120,to:155})'),36);for(const v of ['null','undefined','""','" "']){assert.equal(h.run(`actualRows({from:0,to:${v}})`),0);assert.equal(h.run(`isRow(${v})`),false)}assert.equal(h.run('actualRows({from:120,to:119})'),0);assert.equal(h.run('isRow(1.5)'),false);assert.equal(h.run('isRow(2147483648)'),false)});
 test('work measurement stays backward compatible and adds truck unloading in loads',()=>{const h=harness();const data=JSON.parse(h.run(`JSON.stringify(normalise({workTypes:['Panels'],teams:[{id:'old',work:'Panels',from:10,to:null}]}))`));assert.equal(data.workUnits['Truck unloading'],'loads');assert.equal(data.teams[0].unit,'rows');assert.equal(data.teams[0].quantity,null)});

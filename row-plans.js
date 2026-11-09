@@ -1,5 +1,6 @@
 /* Row installation plans are shared specifications; completion stays in Record work. */
 const ROUTES = new Set(['rowPlans', 'rowFieldMap', 'rowPlan', 'rowPalletDriver', 'rowPlanEdit', 'panelTypes', 'panelTypeEdit', 'rowPlanImport']);
+const WORK_MODES = ['panels','dampers','pallets','tubes'];
 const MAX_INT = 2147483647;
 const copy = value => structuredClone(value);
 const present = value => value !== null && value !== undefined && String(value).trim() !== '';
@@ -145,16 +146,20 @@ export function createRowPlansFeature(api) {
   function recentRow(){try{const id=(api.storage||globalThis.localStorage)?.getItem(recentKey);return typeof id==='string'?planById(id):null;}catch{return null;}}
   function rememberRow(plan){try{(api.storage||globalThis.localStorage)?.setItem(recentKey,plan.id);}catch{/* Browsing still works when storage is unavailable. */}}
   const workModeKey='solar-team-work-mode-v1';
-  try{const saved=(api.storage||globalThis.localStorage)?.getItem(workModeKey);if(['panels','dampers','pallets'].includes(saved))mode=saved;}catch{}
-  function chooseMode(next){if(!['panels','dampers','pallets'].includes(next))return;mode=next;tab='diagram';try{(api.storage||globalThis.localStorage)?.setItem(workModeKey,next);}catch{}}
-  function workTabs(action='plan-section'){return '<div class="plan-tabs plan-section-tabs" role="group" aria-label="Work mode">'+[['panels','Panels'],['dampers','Dampers'],['pallets','Pallets']].map(([value,label])=>'<button type="button" data-action="'+action+'" data-id="'+value+'" aria-pressed="'+(mode===value)+'" class="'+(mode===value?'active':'')+'">'+label+'</button>').join('')+'</div>';}
+  let tubeView='layout';
+  try{const saved=(api.storage||globalThis.localStorage)?.getItem(workModeKey);if(WORK_MODES.includes(saved))mode=saved;}catch{}
+  function chooseMode(next){if(!WORK_MODES.includes(next))return;mode=next;tab='diagram';try{(api.storage||globalThis.localStorage)?.setItem(workModeKey,next);}catch{}}
+  const tubeFields=()=>api.tubes?.fields||['North','Mid'];
+  const workFields=()=>mode==='tubes'?fields().filter(f=>tubeFields().includes(f)):fields();
+  const workPlans=()=>mode==='tubes'?plans().filter(p=>tubeFields().includes(p.field)):plans();
+  function workTabs(action='plan-section',plan=null){if(!plan&&action==='plan-section')plan=planById(selectedRow);return '<div class="plan-tabs plan-section-tabs" role="group" aria-label="Work mode">'+[['panels','Panels'],['dampers','Dampers'],['pallets','Pallets'],['tubes','Tubes']].filter(([value])=>value!=='tubes'||!plan||tubeFields().includes(plan.field)).map(([value,label])=>'<button type="button" data-action="'+action+'" data-id="'+value+'" aria-pressed="'+(mode===value)+'" class="'+(mode===value?'active':'')+'">'+label+'</button>').join('')+'</div>';}
   let rowParent='rowPlans';
-  function openRow(id,requested=false){if(!planById(id))return;rowParent=currentScreen==='rowFieldMap'?'rowFieldMap':'rowPlans';selectedRow=id;palletNeighborId=null;diagramItem=null;schemeFullscreen=false;chooseMode(requested===true||requested==='driver'?'pallets':['panels','dampers','pallets'].includes(requested)?requested:mode);api.navigate(mode==='pallets'?'rowPalletDriver':'rowPlan');}
+  function openRow(id,requested=false){if(!planById(id))return;rowParent=currentScreen==='rowFieldMap'?'rowFieldMap':'rowPlans';selectedRow=id;palletNeighborId=null;diagramItem=null;schemeFullscreen=false;chooseMode(requested===true||requested==='driver'?'pallets':WORK_MODES.includes(requested)?requested:mode);api.navigate(mode==='pallets'?'rowPalletDriver':'rowPlan');}
   let listMode='list',siteMap=null,visibleRows=60;
   let geometryRows=null,geometryIndex=new Map();
   const mapRecord = plan => {const rows=database().siteMap?.rows;if(rows!==geometryRows){geometryRows=rows;geometryIndex=new Map((Array.isArray(rows)?rows:[]).map(r=>[r.field+'\0'+r.rowNumber,r]));}return geometryIndex.get(plan.field+'\0'+plan.rowNumber);};
   function mapFeature(){
-    if(!siteMap&&api.createMap)siteMap=api.createMap({openRow,getWorkMode:()=>mode,setWorkMode:chooseMode,palletSummary:row=>{const plan=plans().find(p=>p.field===row.field&&p.rowNumber===row.rowNumber),pair=driverPair(plan),layout=automaticPalletLayout(plan,pair?.right);return {right:pair?.right?.rowNumber,pallets:layout.pallets.length,error:layout.error};}});
+    if(!siteMap&&api.createMap)siteMap=api.createMap({openRow,getWorkMode:()=>mode,setWorkMode:chooseMode,tubeSummary:row=>api.tubes?.get(plans().find(p=>p.field===row.field&&p.rowNumber===row.rowNumber)),palletSummary:row=>{const plan=plans().find(p=>p.field===row.field&&p.rowNumber===row.rowNumber),pair=driverPair(plan),layout=automaticPalletLayout(plan,pair?.right);return {right:pair?.right?.rowNumber,pallets:layout.pallets.length,error:layout.error};}});
     return siteMap;
   }
   const database = () => api.getDb();
@@ -183,14 +188,14 @@ export function createRowPlansFeature(api) {
   }
   function listRows() {
     const rank=p=>query&&String(p.rowNumber)===query?0:1;
-    const rows = plans().filter(p => (!field || p.field === field) && (!query || String(p.rowNumber).includes(query) || (p.rowType || '').toLowerCase().includes(query.toLowerCase()) || mapFeature()?.matches(mapRecord(p)||{},query))).sort((a,b) => rank(a)-rank(b) || fields().indexOf(a.field)-fields().indexOf(b.field) || a.rowNumber-b.rowNumber);
-    return rows.length ? '<p class="plan-result-count" role="status">'+rows.length+' '+(rows.length===1?'row':'rows')+(rows.length>visibleRows?' · Showing '+visibleRows:'')+'</p><div class="plan-list">'+rows.slice(0,visibleRows).map(p => '<button type="button" class="card plan-row-card" data-action="plan-row" data-id="'+esc(p.id)+'"><span class="row"><strong>Row '+esc(p.rowNumber)+'</strong>'+status(p)+'</span><small>'+esc(p.field)+(p.rowType?' · Type '+esc(p.rowType):'')+'</small>'+typeBadge(p.panelTypeId)+'<span class="plan-row-counts"><span>Panels<br><strong>'+esc(knownText(p.panelsKnown, p.panelCount, 'panels'))+'</strong></span><span>Dampers<br><strong>'+esc(knownText(p.dampersKnown, p.damperCount, 'dampers'))+'</strong></span></span></button>').join('')+'</div>'+(rows.length>visibleRows?btn('Show more rows','plan-more','secondary'):'') : '<section class="empty"><h2>No row plans found</h2><p>Try a row number, post ID or another field.</p>'+btn('Clear filters','plan-reset','secondary')+'</section>';
+    const rows = workPlans().filter(p => (!field || p.field === field) && (!query || String(p.rowNumber).includes(query) || (p.rowType || '').toLowerCase().includes(query.toLowerCase()) || mapFeature()?.matches(mapRecord(p)||{},query))).sort((a,b) => rank(a)-rank(b) || fields().indexOf(a.field)-fields().indexOf(b.field) || a.rowNumber-b.rowNumber);
+    return rows.length ? '<p class="plan-result-count" role="status">'+rows.length+' '+(rows.length===1?'row':'rows')+(rows.length>visibleRows?' · Showing '+visibleRows:'')+'</p><div class="plan-list">'+rows.slice(0,visibleRows).map(p => {const tubes=mode==='tubes'?api.tubes?.get(p):null;return '<button type="button" class="card plan-row-card" data-action="plan-row" data-id="'+esc(p.id)+'"><span class="row"><strong>Row '+esc(p.rowNumber)+'</strong>'+(mode==='tubes'?'':status(p))+'</span><small>'+esc(p.field)+(p.rowType?' · Type '+esc(p.rowType):'')+'</small>'+(mode==='tubes'?(tubes?.available?'<span class="plan-row-counts"><span>Tubes<br><strong>'+tubes.tubes.length+'</strong></span><span>Couplers<br><strong>'+tubes.joins.length+'</strong></span></span>':'<p class="hint">Tube instructions unavailable</p>'):typeBadge(p.panelTypeId)+'<span class="plan-row-counts"><span>Panels<br><strong>'+esc(knownText(p.panelsKnown, p.panelCount, 'panels'))+'</strong></span><span>Dampers<br><strong>'+esc(knownText(p.dampersKnown, p.damperCount, 'dampers'))+'</strong></span></span>')+'</button>';}).join('')+'</div>'+(rows.length>visibleRows?btn('Show more rows','plan-more','secondary'):'') : '<section class="empty"><h2>No row plans found</h2><p>Try a row number, post ID or another field.</p>'+btn('Clear filters','plan-reset','secondary')+'</section>';
   }
   function drawList() {
-    if(field&&!fields().includes(field))field='';
-    const recent=recentRow(),resume=recent&&!query?'<button type="button" class="plan-resume" data-action="plan-row" data-id="'+esc(recent.id)+'"><span><small>Continue task</small><strong>Row '+esc(recent.rowNumber)+' · '+esc(recent.field)+'</strong></span><span aria-hidden="true">→</span></button>':'';
+    if(field&&!workFields().includes(field))field='';
+    const recent=recentRow(),resume=recent&&!query&&(mode!=='tubes'||tubeFields().includes(recent.field))?'<button type="button" class="plan-resume" data-action="plan-row" data-id="'+esc(recent.id)+'"><span><small>Continue task</small><strong>Row '+esc(recent.rowNumber)+' · '+esc(recent.field)+'</strong></span><span aria-hidden="true">→</span></button>':'';
     const context=teamContext?'<p class="plan-context">Team '+esc(teamContext.number)+' · '+esc(teamContext.field)+' · '+esc(teamContext.work)+'</p>':'';
-    renderPage('Work','<div class="rows-hub">'+context+workTabs('plan-work-mode')+resume+'<form data-form="plan-filter" class="plan-filters"><div class="plan-search-line"><label><span class="sr-only">Field</span><select name="field">'+option('','All fields',field)+selectOptions(fields(),field)+'</select></label><label><span class="sr-only">Find row, type or post ID</span><input name="query" type="search" value="'+esc(query)+'" maxlength="60" placeholder="Row / ID" inputmode="search" enterkeyhint="search"></label><button type="submit" class="compact" aria-label="Find rows">Find</button></div>'+(field||query?'<div class="plan-filter-summary"><small>'+esc(field||'All fields')+(query?' · '+esc(query):'')+'</small>'+btn('Clear','plan-reset','text-button')+'</div>':'')+'</form><div id="plan-results">'+listRows()+'</div></div>');
+    renderPage('Work','<div class="rows-hub">'+context+workTabs('plan-work-mode')+resume+'<form data-form="plan-filter" class="plan-filters"><div class="plan-search-line"><label><span class="sr-only">Field</span><select name="field">'+option('','All fields',field)+selectOptions(workFields(),field)+'</select></label><label><span class="sr-only">Find row, type or post ID</span><input name="query" type="search" value="'+esc(query)+'" maxlength="60" placeholder="Row / ID" inputmode="search" enterkeyhint="search"></label><button type="submit" class="compact" aria-label="Find rows">Find</button></div>'+(field||query?'<div class="plan-filter-summary"><small>'+esc(field||'All fields')+(query?' · '+esc(query):'')+'</small>'+btn('Clear','plan-reset','text-button')+'</div>':'')+'</form><div id="plan-results">'+listRows()+'</div></div>');
   }
   function drawField(){
     const filterForm='<form data-form="plan-filter" class="field-map-search"><label><span class="sr-only">Field</span><select name="field">'+option('','All fields',field)+selectOptions(fields(),field)+'</select></label><label><span class="sr-only">Find row, type or post ID</span><input name="query" type="search" value="'+esc(query)+'" maxlength="60" placeholder="Row / ID" inputmode="search" enterkeyhint="search"></label><button type="submit" aria-label="Find rows">Find</button>'+(field||query?'<button type="button" class="text-button" data-action="plan-reset">Clear filters</button>':'')+'</form>';
@@ -206,7 +211,7 @@ export function createRowPlansFeature(api) {
     const mixed=new Set(plan.panelGroups.map(g=>g.typeId)).size>1;
     const facts=mode==='panels'?typeBadge(plan.panelTypeId)+(mixed?'<p class="plan-notice">Mixed types · Check each group</p>':''):'<p class="plan-task-summary"><strong>'+esc(knownText(plan.dampersKnown,plan.damperCount,'dampers'))+'</strong> · Posts from north</p>';
     const heading='<header class="plan-work-heading">'+btn(schemeFullscreen?'×':'←','plan-work-back','secondary')+'<div><small>'+esc(plan.field)+'</small><h1 tabindex="-1">Row '+esc(plan.rowNumber)+'</h1></div><button type="button" class="secondary" data-action="plan-fullscreen" aria-label="'+(schemeFullscreen?'Exit full screen':'Full screen')+'">⛶</button>'+(mapRecord(plan)?btn('Map','plan-show-map','secondary',plan.id):'')+'</header>';
-    api.draw('<section class="plans-feature plan-work'+(schemeFullscreen?' plan-work-fullscreen':'')+'">'+heading+'<div class="plan-browse-toolbar">'+rowNavigation(plan)+workTabs()+'</div><div class="plan-work-facts">'+facts+status(plan)+'<span>'+esc(knownText(plan.panelsKnown,plan.panelCount,'panels'))+' · '+(plan.motorAfterPanel==null?'Motor pending':'Motor: after panel '+esc(plan.motorAfterPanel))+'</span></div>'+diagram(plan)+'<details class="plan-work-details"><summary>Details & sources</summary>'+planDetails(plan)+sourceDetails(plan)+'</details>'+btn('Edit installation plan','plan-edit','secondary',plan.id)+'</section>');
+    api.draw('<section class="plans-feature plan-work'+(schemeFullscreen?' plan-work-fullscreen':'')+'">'+heading+'<div class="plan-browse-toolbar">'+rowNavigation(plan)+workTabs('plan-section',plan)+'</div>'+(mode==='tubes'?'':'<div class="plan-work-facts">'+facts+status(plan)+'<span>'+esc(knownText(plan.panelsKnown,plan.panelCount,'panels'))+' · '+(plan.motorAfterPanel==null?'Motor pending':'Motor: after panel '+esc(plan.motorAfterPanel))+'</span></div>')+diagram(plan)+(mode==='tubes'?'':'<details class="plan-work-details"><summary>Details & sources</summary>'+planDetails(plan)+sourceDetails(plan)+'</details>'+btn('Edit installation plan','plan-edit','secondary',plan.id))+'</section>');
   }
   function planDetails(plan) {
     const geometry=mapRecord(plan);
@@ -232,7 +237,7 @@ export function createRowPlansFeature(api) {
       const pair=driverPair(plan,step);
       return pair?.right?pair:null;
     }
-    const left=plans().find(row=>row.field===plan.field&&row.rowNumber===plan.rowNumber+step);
+    const left=workPlans().find(row=>row.field===plan.field&&row.rowNumber===plan.rowNumber+step);
     return left?{left,right:null}:null;
   }
   function rowNavigation(plan) {
@@ -274,6 +279,7 @@ export function createRowPlansFeature(api) {
   }
 
   function diagram(plan) {
+    if(mode==='tubes')return api.tubes?.render(plan,tubeView,{locale:api.getLanguage?.()||'en'})||'<section class="card"><p>Tube instructions unavailable</p></section>';
     const content = mode==='panels'?panelDiagram(plan):mode==='dampers'?damperDiagram(plan):palletDiagram(plan);
     return '<section class="card plan-diagram">'+compass+content+'<p class="hint">'+(mode==='panels'?'Schematic only. Distances are not to scale.':'Schematic only. Distances are not to scale. Panel ordinals and post ordinals are independent.')+'</p></section>';
   }
@@ -522,6 +528,7 @@ export function createRowPlansFeature(api) {
     else if(action==='plan-fullscreen'){schemeFullscreen=!schemeFullscreen;render('rowPlan');}
     else if(action==='plan-work-back'){if(schemeFullscreen){schemeFullscreen=false;render('rowPlan');}else api.navigate(rowParent);}
     else if(action==='plan-work-mode'){chooseMode(id);render(currentScreen==='rowFieldMap'?'rowFieldMap':'rowPlans');}
+    else if(action==='plan-tube-view'){if(mode==='tubes'&&['layout','ends'].includes(id)){tubeView=id;render('rowPlan');}}
     else if (action==='plan-hub') {teamContext=null;parent={screen:'today',id:null};api.navigate('rowPlans');}
     else if (action==='plan-more') {const previous=visibleRows;visibleRows+=60;render('rowPlans');if(typeof document!=='undefined')document.querySelectorAll('.plan-row-card')[previous]?.focus({preventScroll:true});}
     else if (action==='plan-reset') {field='';query='';visibleRows=60;render(currentScreen==='rowFieldMap'?'rowFieldMap':'rowPlans');}
