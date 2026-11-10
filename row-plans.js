@@ -528,7 +528,7 @@ export function createRowPlansFeature(api) {
     else if(action==='plan-fullscreen'){schemeFullscreen=!schemeFullscreen;render('rowPlan');}
     else if(action==='plan-work-back'){if(schemeFullscreen){schemeFullscreen=false;render('rowPlan');}else api.navigate(rowParent);}
     else if(action==='plan-work-mode'){chooseMode(id);render(currentScreen==='rowFieldMap'?'rowFieldMap':'rowPlans');}
-    else if(action==='plan-tube-view'){if(mode==='tubes'&&['layout','ends'].includes(id)){tubeView=id;render('rowPlan');}}
+    else if(action==='plan-tube-view'){if(mode==='tubes'&&['layout','ends','brackets'].includes(id)){tubeView=id;render('rowPlan');}}
     else if (action==='plan-hub') {teamContext=null;parent={screen:'today',id:null};api.navigate('rowPlans');}
     else if (action==='plan-more') {const previous=visibleRows;visibleRows+=60;render('rowPlans');if(typeof document!=='undefined')document.querySelectorAll('.plan-row-card')[previous]?.focus({preventScroll:true});}
     else if (action==='plan-reset') {field='';query='';visibleRows=60;render(currentScreen==='rowFieldMap'?'rowFieldMap':'rowPlans');}

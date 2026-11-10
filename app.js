@@ -1,12 +1,12 @@
 import { createClient } from './vendor/supabase-client.js';
-import {createOfflineField,createParkImagery,validParkImagery} from './offline-field.js?v=tubes-20261109-v4';
+import {createOfflineField,createParkImagery,validParkImagery} from './offline-field.js?v=brackets-20261110';
 
 const supabase = createClient('https://oimiygdkrnsjzlivwafs.supabase.co','sb_publishable_WKPV0lAUCl1Lr53UujCR3g_zlQay4DS');
-import {createRowPlansFeature} from './row-plans.js?v=tubes-20261109-v4';
-import {createTubePlans} from './tube-plans.js?v=tubes-20261109-v4';
-import {createSiteMap} from './site-map.js?v=tubes-20261109-v4';
-import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=tubes-20261109-v4';
-import {googleMapsConfig} from './google-maps-config.js?v=tubes-20261109-v4';
+import {createRowPlansFeature} from './row-plans.js?v=brackets-20261110';
+import {createTubePlans} from './tube-plans.js?v=brackets-20261110';
+import {createSiteMap} from './site-map.js?v=brackets-20261110';
+import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=brackets-20261110';
+import {googleMapsConfig} from './google-maps-config.js?v=brackets-20261110';
 let googleMapsLoader=null;
 let offlineAccess=false,offlineStarting=false;
 const parkImagery=createParkImagery();
@@ -70,6 +70,9 @@ Object.assign(fieldLabels,{'Needs review':'Нужна проверка','Awaitin
 Object.assign(fieldLabels,{'Open panels':'Открыть панели','Open dampers':'Открыть демперы','Open pallets':'Открыть палеты','Map unavailable.':'Карта недоступна.','Clear row search':'Сбросить поиск ряда','Schematic only. Distances are not to scale.':'Схема условная. Расстояния не в масштабе.','Download park':'Скачать парк','Update saved park':'Обновить копию','Saving…':'Сохраняем…','Saving app, map and rows…':'Сохраняем приложение, карту и ряды…','Location paused while this map is hidden.':'GPS приостановлен, пока карта скрыта.','Location is out of date. Waiting for a fresh position.':'Положение устарело. Ожидаем новые координаты.','Location permission was denied. Allow location access in browser or phone settings, then try again.':'Доступ к GPS запрещён. Разрешите геолокацию в настройках телефона или браузера.','No fresh position arrived. Move to an open area and try again.':'Нет свежих координат. Выйдите на открытое место и повторите.','Your position is unavailable. Check location settings and try again.':'Положение недоступно. Проверьте настройки GPS.','This device does not support browser location.':'Браузер этого устройства не поддерживает GPS.','Location requires an HTTPS connection.':'GPS требует подключения по HTTPS.'});
 Object.assign(fieldLabels,{'Back to work':'Вернуться к работе','Find row':'Найти ряд','My position':'Моё положение'});
 Object.assign(fieldLabels,{
+  Brackets:'Брекеты','Panel brackets':'Брекеты панелей','Short · 400 mm':'Короткие · 400 мм','Long · 1400 mm':'Длинные · 1400 мм','Row total':'Всего на ряд','Bracket parts':'Артикулы брекетов',
+  'Quantities installed on each tube, from north to south.':'Количество на каждой трубе, с севера на юг.',
+  'Bracket quantities unavailable':'Количество брекетов не указано','Update saved park to load the source bracket schedule.':'Обновите копию парка, чтобы загрузить ведомость брекетов.',
   Tubes:'Трубы',Tube:'Труба',Couplers:'Соединения',Coupler:'Муфта',Layout:'Раскладка','End distances':'Крайние размеры','Tube view':'Схема труб',
   'Tube layout':'Раскладка труб','Tube instructions unavailable':'Схема труб недоступна','Tube source':'Источник схемы труб','Tube with GCS':'Труба с GCS','GCS drive':'Привод GCS',
   'With set screws':'С установочными винтами','Without set screws':'Без установочных винтов','Fixed bearings':'Фиксированные подшипники',
@@ -124,7 +127,7 @@ function assignmentConflicts(ids,date=localDay(),exclude=''){return db.teams.fil
 function totals(teams){const grouped=new Map();for(const t of teams){const unit=workUnit(t),amount=unit==='rows'?(isRow(t.to)?actualRows(t):0):(Number.isFinite(Number(t.quantity))?Number(t.quantity):0);if(amount)grouped.set(t.work+'\u0000'+unit,(grouped.get(t.work+'\u0000'+unit)||0)+amount)}return [...grouped].map(([key,value])=>{const [work,unit]=key.split('\u0000');return [work,value,unit]})}
 function staffing(){const today=db.teams.filter(t=>t.date===localDay()),ids=assignedPeopleIds(),active=db.people.filter(p=>p.active);return {teams:today.length,assigned:ids.size,available:active.filter(p=>(p.availability||'ON_SITE')==='ON_SITE'&&!ids.has(p.id)&&p.id!==db.defaultTeamLeaderId).length,off:active.filter(p=>p.availability==='OFF').length,sick:active.filter(p=>p.availability==='SICK').length,active:active.length}}
 function options(values,current='',all=''){const choices=[...new Set(values)];if(current&&!choices.includes(current))choices.unshift(current);return (all?'<option value="">'+esc(all)+'</option>':'')+choices.map(v=>'<option value="'+esc(v)+'" '+(v===current?'selected':'')+'>'+esc(v)+'</option>').join('')}
-function header(title,back=false){return '<header class="top">'+(back?btn('‹ <span>Back</span>','back','back'):'<div class="brand"><img class="brand-mark" src="icon.svg?v=tubes-20261109-v4" width="34" height="34" alt="" aria-hidden="true"><span class="brand-name"><span class="brand-solar">SOLAR</span> <span class="brand-team">TEAM</span></span></div>')+'<time datetime="'+localDay()+'">'+dateLabel(localDay())+'</time></header><h1 tabindex="-1">'+esc(title)+'</h1>'}
+function header(title,back=false){return '<header class="top">'+(back?btn('‹ <span>Back</span>','back','back'):'<div class="brand"><img class="brand-mark" src="icon.svg?v=brackets-20261110" width="34" height="34" alt="" aria-hidden="true"><span class="brand-name"><span class="brand-solar">SOLAR</span> <span class="brand-team">TEAM</span></span></div>')+'<time datetime="'+localDay()+'">'+dateLabel(localDay())+'</time></header><h1 tabindex="-1">'+esc(title)+'</h1>'}
 const iconShapes={
 work:'<rect x="3" y="3" width="18" height="15" rx="2"/><path d="M9 3v15M15 3v15M3 8h18M3 13h18M8 21h8M12 18v3"/>',
 today:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>',

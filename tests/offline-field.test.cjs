@@ -5,13 +5,14 @@ test('real browser SDK is loaded as a classic script before the app and restores
 const fixture=()=>({fields:['Test Field'],people:[{name:'TEST EMPLOYEE'}],teams:[{note:'TEST WORK'}],authSecret:'NOT-A-CREDENTIAL',rowPlans:[{id:'r1',field:'Test Field',rowNumber:1,panelCount:100,panelGroups:[{quantity:25,positiveSide:'N',typeId:'yellow'}],motorAfterPanel:46,dampers:[{post:2,side:'E'}]}],panelTypes:[{id:'yellow',description:'650M',currentClass:'H',color:'#f3cf35'}],siteMap:{crs:'EPSG:25832',source:{sha256:'source'},rows:[{field:'Test Field',rowNumber:1,north:[100,200],south:[100,100],drive:{after:46,point:[100,150]}}]}});
 function memory(){let saved=null,fail=false;return {get:async()=>saved&&structuredClone(saved),put:async x=>{if(fail)throw Object.assign(Error('full'),{name:'QuotaExceededError'});saved=structuredClone(x)},remove:async()=>{saved=null},fail:()=>{fail=true}}}
 test('explicit offline download retains protected tube instructions and excludes unrelated nested data',async()=>{
- const m=await load(),db=fixture(),source=require('./fixtures/tube-catalogue.cjs')();db.tubeInstallation=structuredClone(source);
+ const m=await load(),db=fixture(),source=require('./fixtures/tube-catalogue.cjs')();source.templates['1'].tubes.forEach(t=>t.brackets={short:9,long:0});db.tubeInstallation=structuredClone(source);
+ db.tubeInstallation.templates['1'].tubes[0].brackets.privateMarker='EXCLUDE-TUBE-PRIVATE';
  db.tubeInstallation.privateMarker='EXCLUDE-TUBE-PRIVATE';db.tubeInstallation.source.privateMarker='EXCLUDE-TUBE-PRIVATE';
  db.tubeInstallation.templates['1'].tubes[0].privateMarker='EXCLUDE-TUBE-PRIVATE';db.tubeInstallation.templates['1'].tubes[0].bearings[0].privateMarker='EXCLUDE-TUBE-PRIVATE';
  const store=memory(),field=m.createOfflineField({store,prepareShell:async()=>true,checkShell:async()=>true});await field.save(db,140);
  const saved=await field.read();assert.deepEqual(saved.data.tubeInstallation,source);assert.doesNotMatch(JSON.stringify(saved),/EXCLUDE-TUBE-PRIVATE|TEST EMPLOYEE|NOT-A-CREDENTIAL/);
  const {createTubePlans}=await import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(path.join(__dirname,'../tube-plans.js'),'utf8')).toString('base64'));
- const p={field:'North',rowNumber:10,rowType:'#1',panelCount:100};assert.equal(createTubePlans(()=>saved.data.tubeInstallation).get(p).southOverhangMm,2160);
+ const p={field:'North',rowNumber:10,rowType:'#1',panelCount:100};assert.equal(createTubePlans(()=>saved.data.tubeInstallation).get(p).southOverhangMm,2160);assert.deepEqual(createTubePlans(()=>saved.data.tubeInstallation).get(p).brackets,{available:true,short:27,long:0});
  const bad=fixture();bad.tubeInstallation={schema:1,rows:[],templates:null};await assert.rejects(m.buildFieldPackage(bad,140),/Incomplete/);
 });
 test('public shell contains only rendering code, not the protected production tube catalogue',()=>{
@@ -32,8 +33,8 @@ test('service worker bypasses stale HTTP assets and rejects an index from a diff
   vm.runInNewContext(source,{URL,Request,self:{location:{origin:'https://example.test',href:scope},addEventListener:(n,fn)=>listeners[n]=fn,skipWaiting:async()=>activations++},caches:{open:async()=>cache},fetch:()=>{throw Error('Network should not be used')}});
   listeners.install({waitUntil:p=>task=p});await task;assert.equal(activations,1);
   const readiness=async()=>{listeners.message({data:{type:'FIELD_SHELL_STATUS'},ports:[{postMessage:x=>reply=x}],waitUntil:p=>task=p});await task;return reply;};
-  assert.equal((await readiness()).ready,true);assert.equal(reply.build,'tubes-20261109-v4');
-  assert.ok(assets.includes('./vendor/supabase-2.105.0.js'));assert.ok(assets.includes('./offline-field.js?v=tubes-20261109-v4'));assert.ok(!assets.some(x=>/^https?:/.test(x)));
+  assert.equal((await readiness()).ready,true);assert.equal(reply.build,'brackets-20261110');
+  assert.ok(assets.includes('./vendor/supabase-2.105.0.js'));assert.ok(assets.includes('./offline-field.js?v=brackets-20261110'));assert.ok(!assets.some(x=>/^https?:/.test(x)));
   currentIndex='<script src="app.js?v=older-build"></script>';
   assert.equal((await readiness()).ready,false,'HTTP 200 is insufficient when the cached HTML uses an older build');
   listeners.install({waitUntil:p=>task=p});await assert.rejects(task,/different build/);assert.equal(activations,1,'An inconsistent shell must not activate');

@@ -207,6 +207,18 @@
 .tube-installation{max-width:480px;margin:12px auto 0}
 .tube-views{margin:10px 0}
 .tube-views button{font-size:13px;padding:10px 6px}
+.tube-bracket-total{padding:14px;background:#e8f5ef;border:1px solid #c8e2d7;border-radius:14px;margin:16px 0}
+.tube-bracket-counts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.tube-bracket-counts>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.tube-bracket-counts span{font-size:12px;color:var(--muted);line-height:1.4}
+.tube-bracket-counts strong{font-size:25px;line-height:1.2;font-variant-numeric:tabular-nums}
+.tube-bracket-card{border:1px solid #dce5eb;border-left:7px solid var(--tube-colour);border-radius:12px;padding:14px;margin:12px 0;background:#fff}
+.tube-bracket-heading{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.tube-bracket-heading>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.tube-bracket-heading strong{font-size:15px;line-height:1.4}
+.tube-bracket-heading .tube-part{overflow-wrap:anywhere}
+.tube-bracket-drive{background:#e8f5ef;color:var(--green-dark);font-size:12px;font-weight:750;border-radius:7px;padding:5px 7px}
+.tube-bracket-parts{font-size:13px;margin-top:18px}
 .tube-sheet{padding:16px;margin:12px 0;overflow:visible}
 .tube-sheet h2{font-size:18px;line-height:1.35;margin:0 0 7px}
 .tube-sheet>.hint{font-size:12px;line-height:1.5;margin:7px 0 12px}

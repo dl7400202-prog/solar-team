@@ -25,6 +25,7 @@ export function createTubePlans(input) {
     for(const [i,t] of raw.entries()){
       if(!colours[t.colour]||!Number.isSafeInteger(t.lengthMm)||t.lengthMm<=0||typeof t.part!=='string'||!Array.isArray(t.bearings))return bad();
       const tube={index:i+1,colour:t.colour,lengthMm:t.lengthMm,part:t.part,bearings:[],driveFromNorthMm:t.driveFromNorthMm};
+      tube.brackets=t.brackets&&['short','long'].every(k=>Number.isSafeInteger(t.brackets[k])&&t.brackets[k]>=0&&t.brackets[k]<=100)?{short:t.brackets.short,long:t.brackets.long}:null;
       for(const b of t.bearings){
         if(!['bearing','fixed'].includes(b.kind)||!Number.isSafeInteger(b.fromNorthMm)||b.fromNorthMm<0||b.fromNorthMm>t.lengthMm)return bad();
         const bearing={tube:i+1,kind:b.kind,fromNorthMm:b.fromNorthMm};tube.bearings.push(bearing);bearings.push(bearing);
@@ -42,7 +43,8 @@ export function createTubePlans(input) {
       const list=bearings.filter(b=>side==='N'?compare(b,drive)<0:compare(b,drive)>0).sort(side==='N'?(a,b)=>compare(b,a):compare);
       list.forEach((b,i)=>Object.assign(b,{side,ordinalFromDrive:i+1,code:side+(i+1)}));
     }
-    return {available:true,type:row[2],tubes,bearings,drive,
+    const brackets=tubes.every(t=>t.brackets)?{available:true,short:tubes.reduce((n,t)=>n+t.brackets.short,0),long:tubes.reduce((n,t)=>n+t.brackets.long,0)}:{available:false};
+    return {available:true,type:row[2],tubes,bearings,drive,brackets,
       joins:tubes.slice(1).map((t,i)=>({northTube:i+1,southTube:i+2,part:'20764 series'})),
       northOverhangMm:Math.min(...tubes[0].bearings.map(b=>b.fromNorthMm)),
       southOverhangMm:tubes.at(-1).lengthMm-Math.max(...tubes.at(-1).bearings.map(b=>b.fromNorthMm)),
@@ -63,12 +65,18 @@ export function createTubePlans(input) {
   function renderEnds(result,metres) {
     return '<section class="card tube-sheet"><h2>Extreme bearings</h2><p class="hint">Distance from the extreme bearing to the tube end</p><div class="tube-end-label">↑ N · <span>North end</span></div><div class="tube-ends" role="group" aria-label="Extreme bearing distances"><div class="tube-end-piece tube-end-north" aria-hidden="true"></div><div class="tube-end-piece tube-end-south" aria-hidden="true"></div><span class="tube-end-bearing tube-end-north" aria-hidden="true"></span><span class="tube-end-bearing tube-end-south" aria-hidden="true"></span><div class="tube-end-measure tube-end-north"><strong class="tube-end-value">'+metres(result.northOverhangMm,2)+' <span>m</span></strong></div><div class="tube-end-measure tube-end-south"><strong class="tube-end-value">'+metres(result.southOverhangMm,2)+' <span>m</span></strong></div><span class="tube-end-name tube-end-north">Northernmost bearing</span><span class="tube-end-name tube-end-south">Southernmost bearing</span><span class="tube-end-break" aria-hidden="true">//</span><small class="tube-end-break-label">Row shortened</small></div><div class="tube-end-label">↓ S · <span>South end</span></div><p class="hint">Schematic only. Distances are not to scale.</p></section>';
   }
+  function renderBrackets(result,metres) {
+    if(!result.brackets.available)return '<section class="card tube-sheet"><h2>Bracket quantities unavailable</h2><p>Update saved park to load the source bracket schedule.</p></section>';
+    const counts=b=>'<div class="tube-bracket-counts"><div><span>Short · 400 mm</span><strong>'+b.short+'</strong></div><div><span>Long · 1400 mm</span><strong>'+b.long+'</strong></div></div>';
+    const rows=result.tubes.map(t=>'<article class="tube-bracket-card" data-bracket-tube="'+t.index+'" style="--tube-colour:'+colours[t.colour][1]+'"><div class="tube-bracket-heading"><div><strong><span>Tube '+t.index+'</span> · '+metres(t.lengthMm,1)+' <span>m</span></strong><span>'+colours[t.colour][0]+'</span><small class="tube-part">'+esc(t.part)+'</small></div>'+(t.index===result.drive.tube?'<span class="tube-bracket-drive">GCS</span>':'')+'</div>'+counts(t.brackets)+'</article>').join('');
+    return '<section class="card tube-sheet"><h2>Panel brackets</h2><p class="hint">Quantities installed on each tube, from north to south.</p><div class="tube-bracket-total"><strong>Row total</strong>'+counts(result.brackets)+'</div><p class="tube-north">↑ N · <span>North end</span></p>'+rows+'<p class="tube-south">↓ S · <span>South end</span></p><details class="tube-bracket-parts"><summary>Bracket parts</summary><p><span>Short · 400 mm</span>: 21063-300<br><span>Long · 1400 mm</span>: 21029-300</p></details></section>';
+  }
   function render(plan,view='layout',{locale='en'}={}) {
     const result=get(plan);
     if(!result.available)return '<section class="card tube-unavailable"><h2>Tube instructions unavailable</h2><p>'+messages[result.reason]+'</p></section>';
     const metres=(mm,decimals)=>new Intl.NumberFormat(locale==='ru'?'ru-RU':'en-GB',{minimumFractionDigits:decimals===2?2:0,maximumFractionDigits:decimals}).format(mm/1000);
-    const tabs='<div class="plan-tabs tube-views" role="group" aria-label="Tube view">'+[['layout','Layout'],['ends','End distances']].map(([key,label])=>'<button type="button" data-action="plan-tube-view" data-id="'+key+'" aria-pressed="'+(view===key)+'" class="'+(view===key?'active':'')+'">'+label+'</button>').join('')+'</div>';
-    return '<div class="tube-installation">'+tabs+'<div aria-live="polite">'+(view==='ends'?renderEnds(result,metres):renderLayout(result,metres))+'</div>'+sourceDetails(result)+'</div>';
+    const tabs='<div class="plan-tabs tube-views" role="group" aria-label="Tube view">'+[['layout','Layout'],['ends','End distances'],['brackets','Brackets']].map(([key,label])=>'<button type="button" data-action="plan-tube-view" data-id="'+key+'" aria-pressed="'+(view===key)+'" class="'+(view===key?'active':'')+'">'+label+'</button>').join('')+'</div>';
+    return '<div class="tube-installation">'+tabs+'<div aria-live="polite">'+(view==='brackets'?renderBrackets(result,metres):view==='ends'?renderEnds(result,metres):renderLayout(result,metres))+'</div>'+sourceDetails(result)+'</div>';
   }
   return {fields,get,render};
 }

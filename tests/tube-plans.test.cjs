@@ -2,6 +2,20 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const fixture=require('./fixtures/tube-catalogue.cjs');
 const load=name=>import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(path.join(__dirname,'..',name),'utf8')).toString('base64'));
 const plan=(rowNumber=10,field='North',rowType='#1',panelCount=100)=>({id:field+':'+rowNumber,field,rowNumber,rowType,panelCount});
+
+test('brackets are source counts per tube, zero is explicit and old catalogues stay usable',async()=>{
+  const {createTubePlans}=await load('tube-plans.js'),data=fixture();
+  data.templates['1'].tubes.forEach((t,i)=>t.brackets={short:[5,10,5][i],long:[5,0,5][i]});
+  const f=createTubePlans(data),r=f.get(plan());
+  assert.deepEqual(r.brackets,{available:true,short:20,long:10});
+  assert.deepEqual(r.tubes[1].brackets,{short:10,long:0});
+  const html=f.render(plan(),'brackets');
+  assert.equal((html.match(/data-bracket-tube=/g)||[]).length,3);assert.match(html,/400 mm/);assert.match(html,/1400 mm/);assert.match(html,/TEST-GCS/);
+  delete data.templates['1'].tubes[0].brackets;
+  assert.equal(f.get(plan()).available,true);assert.equal(f.get(plan()).brackets.available,false);
+  assert.match(f.render(plan(),'brackets'),/Bracket quantities unavailable/);assert.doesNotMatch(f.render(plan(),'brackets'),/data-bracket-tube=/);
+  data.templates['1'].tubes[0].brackets={short:-1,long:5};assert.equal(f.get(plan()).brackets.available,false);
+});
 test('source tubes and couplers preserve order, extreme distances and outward bearing numbering',async()=>{
   const {createTubePlans}=await load('tube-plans.js'),data=fixture(),before=structuredClone(data),f=createTubePlans(data),r=f.get(plan());
   assert.equal(r.available,true);assert.deepEqual(r.tubes.map(t=>t.part),['TEST-N','TEST-GCS','TEST-S']);assert.equal(r.joins.length,2);
@@ -33,5 +47,8 @@ test('viewer opens tubes from Work, preserves the view across rows and leaves sh
   await feature.handleAction('plan-row','North:10');assert.equal(screen,'rowPlan');assert.match(html,/data-tube-joint="2"/);assert.doesNotMatch(html,/Needs review|Edit installation plan|Motor: after panel/);
   await feature.handleAction('plan-tube-view','ends');assert.match(html,/2,23/);assert.match(html,/2,16/);await feature.handleAction('plan-browse-next');assert.match(html,/Row 11/);assert.match(html,/2,23/);assert.doesNotMatch(html,/data-tube-index=/);
   await feature.handleAction('plan-browse-next');assert.match(html,/Row 11/);await feature.handleAction('plan-fullscreen');assert.match(html,/plan-work-fullscreen/);await feature.handleAction('plan-fullscreen');
+  db.tubeInstallation.templates['1'].tubes.forEach(t=>t.brackets={short:9,long:0});
+  await feature.handleAction('plan-tube-view','brackets');assert.match(html,/data-bracket-tube="3"/);await feature.handleAction('plan-browse-previous');assert.match(html,/Row 10/);assert.match(html,/Panel brackets/);assert.match(html,/data-bracket-tube="3"/);
+  db.tubeInstallation.templates['1'].tubes.forEach(t=>delete t.brackets);await feature.handleAction('plan-tube-view','ends');
   await feature.handleAction('plan-section','panels');assert.match(html,/plan-diagram/);await feature.handleAction('plan-section','tubes');assert.match(html,/Extreme bearings/);assert.deepEqual(db,before);assert.equal(storage.get('solar-team-work-mode-v1'),'tubes');
 });
