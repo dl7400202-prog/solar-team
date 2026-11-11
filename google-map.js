@@ -27,7 +27,7 @@ export function createGoogleMapsLoader({key,document=globalThis.document,scope=g
   return {load,onFailure:listener=>{listeners.add(listener);return ()=>listeners.delete(listener)}};
 }
 
-export function createGoogleSatelliteMap({loader,toLocation,colourFor=()=>null,onSelect=()=>{},onGesture=()=>{},onStatus=()=>{}}) {
+export function createGoogleSatelliteMap({loader,toLocation,colourFor=()=>null,bandsFor=null,onSelect=()=>{},onGesture=()=>{},onStatus=()=>{}}) {
   let host=null,map=null,maps=null,epoch=0,offFailure=null,abort=null,rows=[],selected=null,layers=[],rowLines=new Map(),position=null,accuracy=null,label=null,location=null,following=false,focusPending=false,camera=null,resetCamera=false,halo=null;
   const clearLayers=()=>{for(const layer of layers){maps?.event?.clearInstanceListeners(layer);layer.setMap(null);}layers=[];rowLines.clear();halo?.setMap(null);halo=null;label?.setMap(null);label=null;};
   function report(state){onStatus(state);}
@@ -56,7 +56,7 @@ export function createGoogleSatelliteMap({loader,toLocation,colourFor=()=>null,o
     clearLayers();
     for(const row of rows){const n=toLocation(row.north),s=toLocation(row.south);if(!n||!s)continue;
       const colour=index=>{const value=colourFor(row,index);return /^#[a-f0-9]{6}$/i.test(value||'')?value:'#c5ced7';};
-      let parts=(row.groups||[]).map((group,index)=>({north:group.north&&toLocation(group.north),south:group.south&&toLocation(group.south),colour:colour(index)})).filter(g=>g.north&&g.south);
+      let parts=(bandsFor?bandsFor(row):(row.groups||[]).map((group,index)=>({...group,colour:colour(index)}))).map(group=>({north:group.north&&toLocation(group.north),south:group.south&&toLocation(group.south),colour:group.colour})).filter(g=>g.north&&g.south);
       if(!parts.length||parts.every(g=>g.colour===parts[0].colour))parts=[{north:n,south:s,colour:parts[0]?.colour||colour(0)}];
       const bands=parts.map(part=>{const band=new maps.Polyline({map,path:[part.north,part.south],strokeColor:part.colour,strokeOpacity:1,strokeWeight:rowWidth(),zIndex:2});band.addListener('click',()=>onSelect(row));layers.push(band);return band;});rowLines.set(row.rowNumber,{bands});
       const motor=row.drive?.point&&toLocation(row.drive.point);if(motor){const mark=new maps.Circle({map,center:motor,radius:1.5,fillColor:'#ec6475',fillOpacity:1,strokeColor:'#ffffff',strokeWeight:1,zIndex:row.rowNumber===selected?7:3});mark.addListener('click',()=>onSelect(row));layers.push(mark);}

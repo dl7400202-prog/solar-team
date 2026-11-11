@@ -1,6 +1,13 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const load=()=>import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(path.join(__dirname,'../site-map.js'),'utf8')).toString('base64'));
 const rows=[{rowNumber:10,field:'South',north:[500000,6100100],south:[500000,6100000]},{rowNumber:11,field:'South',north:[500010,6100075],south:[500010,6100000]}];
+
+test('colour segments follow panel ranges when a type changes inside a source string',async()=>{
+ const {rowColourBands}=await load(),row={north:[0,100],south:[0,0],groups:[{first:1,last:25,north:[0,100],south:[0,75]},{first:26,last:50,north:[0,75],south:[0,50]},{first:51,last:75,north:[0,50],south:[0,25]},{first:76,last:100,north:[0,25],south:[0,0]}]};
+ const plan={panelGroups:[{quantity:25,typeId:'a'},{quantity:25,typeId:'a'},{quantity:21,typeId:'a'},{quantity:4,typeId:'b'},{quantity:25,typeId:'b'}]},before=structuredClone(row);
+ const b=rowColourBands(row,plan,[{id:'a',color:'#00ff00'},{id:'b',color:'#00aaff'}]);
+ assert.equal(b.length,5);assert.deepEqual(b[2],{north:[0,50],south:[0,29],colour:'#00ff00'});assert.deepEqual(b[3],{north:[0,29],south:[0,25],colour:'#00aaff'});assert.equal(b[4].colour,'#00aaff');assert.deepEqual(row,before);
+});
 test('aerial camera stays inside downloaded bounds without distorting geography on either orientation',async()=>{
  const {constrainAerialView}=await load(),bounds={minE:100,maxE:4900,minN:100,maxN:4900},origin={e:100,n:4900};
  for(const camera of [{x:-200,y:-500,width:1704,height:3688},{x:4200,y:4400,width:600,height:1000},{x:-4000,y:-2000,width:9000,height:4000},{x:-4000,y:-2000,width:4000,height:9000}]){

@@ -1,12 +1,12 @@
 import { createClient } from './vendor/supabase-client.js';
-import {createOfflineField,createParkImagery,validParkImagery} from './offline-field.js?v=brackets-20261110';
+import {createOfflineField,createParkImagery,validParkImagery} from './offline-field.js?v=north-panels-20261111';
 
 const supabase = createClient('https://oimiygdkrnsjzlivwafs.supabase.co','sb_publishable_WKPV0lAUCl1Lr53UujCR3g_zlQay4DS');
-import {createRowPlansFeature} from './row-plans.js?v=brackets-20261110';
-import {createTubePlans} from './tube-plans.js?v=brackets-20261110';
-import {createSiteMap} from './site-map.js?v=brackets-20261110';
-import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=brackets-20261110';
-import {googleMapsConfig} from './google-maps-config.js?v=brackets-20261110';
+import {createRowPlansFeature} from './row-plans.js?v=north-panels-20261111';
+import {createTubePlans} from './tube-plans.js?v=north-panels-20261111';
+import {createSiteMap} from './site-map.js?v=north-panels-20261111';
+import {createGoogleMapsLoader,createGoogleSatelliteMap} from './google-map.js?v=north-panels-20261111';
+import {googleMapsConfig} from './google-maps-config.js?v=north-panels-20261111';
 let googleMapsLoader=null;
 let offlineAccess=false,offlineStarting=false;
 const parkImagery=createParkImagery();
@@ -127,7 +127,7 @@ function assignmentConflicts(ids,date=localDay(),exclude=''){return db.teams.fil
 function totals(teams){const grouped=new Map();for(const t of teams){const unit=workUnit(t),amount=unit==='rows'?(isRow(t.to)?actualRows(t):0):(Number.isFinite(Number(t.quantity))?Number(t.quantity):0);if(amount)grouped.set(t.work+'\u0000'+unit,(grouped.get(t.work+'\u0000'+unit)||0)+amount)}return [...grouped].map(([key,value])=>{const [work,unit]=key.split('\u0000');return [work,value,unit]})}
 function staffing(){const today=db.teams.filter(t=>t.date===localDay()),ids=assignedPeopleIds(),active=db.people.filter(p=>p.active);return {teams:today.length,assigned:ids.size,available:active.filter(p=>(p.availability||'ON_SITE')==='ON_SITE'&&!ids.has(p.id)&&p.id!==db.defaultTeamLeaderId).length,off:active.filter(p=>p.availability==='OFF').length,sick:active.filter(p=>p.availability==='SICK').length,active:active.length}}
 function options(values,current='',all=''){const choices=[...new Set(values)];if(current&&!choices.includes(current))choices.unshift(current);return (all?'<option value="">'+esc(all)+'</option>':'')+choices.map(v=>'<option value="'+esc(v)+'" '+(v===current?'selected':'')+'>'+esc(v)+'</option>').join('')}
-function header(title,back=false){return '<header class="top">'+(back?btn('‹ <span>Back</span>','back','back'):'<div class="brand"><img class="brand-mark" src="icon.svg?v=brackets-20261110" width="34" height="34" alt="" aria-hidden="true"><span class="brand-name"><span class="brand-solar">SOLAR</span> <span class="brand-team">TEAM</span></span></div>')+'<time datetime="'+localDay()+'">'+dateLabel(localDay())+'</time></header><h1 tabindex="-1">'+esc(title)+'</h1>'}
+function header(title,back=false){return '<header class="top">'+(back?btn('‹ <span>Back</span>','back','back'):'<div class="brand"><img class="brand-mark" src="icon.svg?v=north-panels-20261111" width="34" height="34" alt="" aria-hidden="true"><span class="brand-name"><span class="brand-solar">SOLAR</span> <span class="brand-team">TEAM</span></span></div>')+'<time datetime="'+localDay()+'">'+dateLabel(localDay())+'</time></header><h1 tabindex="-1">'+esc(title)+'</h1>'}
 const iconShapes={
 work:'<rect x="3" y="3" width="18" height="15" rx="2"/><path d="M9 3v15M15 3v15M3 8h18M3 13h18M8 21h8M12 18v3"/>',
 today:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>',

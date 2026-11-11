@@ -6,7 +6,13 @@ const definition = crs => crs==='EPSG:25832'?'+proj=utm +zone=32 +ellps=GRS80 +u
 export const rowBandWidth = units => Math.max(1.8,Math.min(7,3.2/(Number.isFinite(units)&&units>0?units:2)));
 export function rowColourBands(row,plan,panelTypes=[]){
   const colour=id=>{const value=panelTypes.find(t=>t.id===id)?.color;return /^#[a-f0-9]{6}$/i.test(value||'')?value:'#c5ced7';};
-  const bands=(row.groups||[]).map((g,i)=>({north:g.north,south:g.south,colour:colour(plan?.panelGroups?.[i]?.typeId)})).filter(g=>point(g.north)&&point(g.south));
+  let ordinal=1;const ranges=(plan?.panelGroups||[]).map(g=>{const first=ordinal;ordinal+=g.quantity;return {...g,first,last:ordinal-1};});
+  const bands=(row.groups||[]).flatMap((g,i)=>{
+    if(!point(g.north)||!point(g.south))return [];
+    if(!Number.isSafeInteger(g.first)||!Number.isSafeInteger(g.last)||g.last<g.first)return [{north:g.north,south:g.south,colour:colour(plan?.panelGroups?.[i]?.typeId)}];
+    const at=f=>g.north.map((n,k)=>n+(g.south[k]-n)*f),count=g.last-g.first+1;
+    return ranges.filter(r=>r.first<=g.last&&r.last>=g.first).map(r=>({north:at((Math.max(r.first,g.first)-g.first)/count),south:at((Math.min(r.last,g.last)-g.first+1)/count),colour:colour(r.typeId)}));
+  });
   if(!bands.length)return [{north:row.north,south:row.south,colour:colour(plan?.panelTypeId)}];
   if(bands.every(g=>g.colour===bands[0].colour))return [{north:row.north,south:row.south,colour:bands[0].colour}];
   return bands;
@@ -83,7 +89,7 @@ export function createSiteMap(api) {
     paintLocation();
   }});
   let satellite=null;
-  function getSatellite(){return satellite||(satellite=api.createSatellite?.({toLocation:p=>sourcePointToLocation(p,source()?.crs,projection()),colourFor:(row,index)=>{const typeId=planFor(row)?.panelGroups?.[index]?.typeId;return (db().panelTypes||[]).find(t=>t.id===typeId)?.color;},onSelect:row=>select(row),onGesture:()=>{follow=false;paintLocation();},onStatus:state=>{
+  function getSatellite(){return satellite||(satellite=api.createSatellite?.({bandsFor:row=>rowColourBands(row,planFor(row),db().panelTypes||[]),toLocation:p=>sourcePointToLocation(p,source()?.crs,projection()),colourFor:(row,index)=>{const typeId=planFor(row)?.panelGroups?.[index]?.typeId;return (db().panelTypes||[]).find(t=>t.id===typeId)?.color;},onSelect:row=>select(row),onGesture:()=>{follow=false;paintLocation();},onStatus:state=>{
     satelliteState=state;if(!root||!visible)return;
     const message=root.querySelector('.site-map-google-message'),canvas=root.querySelector('.site-map-google-canvas');
     if(message){message.hidden=!['loading','error'].includes(state);message.textContent=state==='loading'?'Loading Google Maps…':'Google Maps is temporarily unavailable. Use Row plan or reload this page after Google access is activated.';}
